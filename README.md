@@ -2067,18 +2067,18 @@ Our Mitigation:
 **Operating System:**
 ```
 Tested and Verified:
-- Windows 10 (Version 1809+)
-  - Build 17763 or later
+- Windows 11 (Version 25H2)
+  - Build 26200 or later
   - All editions (Home, Pro, Enterprise)
   
-- Windows 11 (All versions)
-  - Build 22000 or later  
-  - Verified on 25H2 (Build 26200)
+- Windows 10 (All versions)
+  - Correct the Offset_SeCiCallbacks and Offset_SafeFunction values in drivers.ini for your Windows build.  
+  - Unverified (trivial offset adjustment required)
   - All editions
 
 Architecture:
 - x64 only (64-bit)
-- ARM64 not supported
+- ARM64 not supported (I can implement it by editing vcxproj)
 ```
 
 **Privileges:**
