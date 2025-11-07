@@ -1,0 +1,22 @@
+
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.14.36623.8
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "BootBypass", "BootBypass.vcxproj", "{2BABC54C-FD14-4745-92C7-6785C12014E6}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Release|x64 = Release|x64
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{2BABC54C-FD14-4745-92C7-6785C12014E6}.Release|x64.ActiveCfg = Release|x64
+		{2BABC54C-FD14-4745-92C7-6785C12014E6}.Release|x64.Build.0 = Release|x64
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {EA047160-7D9B-4CFC-BC95-2E5562DBF7EB}
+	EndGlobalSection
+EndGlobal
