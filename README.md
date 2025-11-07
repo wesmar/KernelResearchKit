@@ -15,12 +15,12 @@ KernelResearchKit represents a comprehensive research framework for analyzing an
 
 ### Key Distinguishing Features
 
-**Primary Innovation: Native C Boot-Time Execution**  
-Unlike conventional post-boot kernel exploits, this framework achieves its objective through a native application that executes during the Windows boot process via the `BootExecute` registry mechanism. This approach operates in a pristine, high-privilege environment before security subsystems initialize, providing unparalleled control over system integrity configurations.
+**Primary Innovation: Native Subsystem Boot-Time Execution**  
+Unlike conventional post-boot kernel exploits, this framework achieves its objective through a native substystem application (written in C) that executes during the Windows boot process via the `BootExecute` registry mechanism. This approach operates in a pristine, high-privilege environment before security subsystems initialize, providing unparalleled control over system integrity configurations.
 
 **Dual-Path Architecture**  
 The framework provides two independent execution pathways:
-- **Boot-time path**: Native C application executing in the Native subsystem (pre-Win32)
+- **Boot-time path**: native subsystem application application executing in the Native subsystem (pre-Win32)
 - **Runtime path**: C++ application operating in fully-booted system context
 
 Both paths achieve identical outcomes through different technical approaches, demonstrating the versatility of the underlying vulnerability class.
@@ -63,7 +63,7 @@ graph TB
     style M fill:#45b7d1,color:white
 ```
 
-### Component 1: BootBypass (Native C) - ⭐ CORE INNOVATION
+### Component 1: BootBypass (native subsystem application) - ⭐ CORE INNOVATION
 
 #### Execution Context and Privilege Model
 
@@ -169,7 +169,7 @@ Boot 2: HVCI=0 → Skip HVCI disable → Continue normal execution
 
 The framework implements a **dual-layer protection mechanism** to prevent this loop:
 
-**Layer 1: Native Cleanup Routines (Primary Defense)**
+**Layer 1: native subsystem applicationleanup Routines (Primary Defense)**
 
 Immediately upon execution, before any HVCI detection logic, BootBypass performs cleanup:
 ```c
@@ -450,7 +450,7 @@ While BootBypass operates in the pristine boot environment, drvloader provides a
 
 **Execution Context Comparison:**
 
-| Aspect | BootBypass (Native C) | drvloader (C++) |
+| Aspect | BootBypass (native subsystem application) | drvloader (C++) |
 |--------|----------------------|-----------------|
 | **Subsystem** | Native (pre-Win32) | Windows (Win32) |
 | **API Surface** | Nt* and Rtl* only | Win32 API + Native API |
@@ -2496,7 +2496,7 @@ SOFTWARE.
 ## 📊 Project Statistics
 ```
 Lines of Code:
-- BootBypass (Native C):      ~2,500 lines
+- BootBypass (native subsystem application):      ~2,500 lines
 - drvloader (C++):            ~1,200 lines
 - OmniDriver (Kernel C):        ~800 lines
 - OmniUtility (C++):          ~1,500 lines
