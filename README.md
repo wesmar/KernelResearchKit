@@ -1,4 +1,39 @@
+## 🚧 Work in Progress
 
+**README.md completion:** Tonight (detailed installation guide and technical documentation)
+
+**Video demonstration:** [Watch the framework in action](https://youtu.be/6VWmxrt4wNE)
+
+---
+
+## Configuration Pipeline (`drivers.ini`)
+
+The `drivers.ini` file defines a sequential execution pipeline for driver operations. **Order matters** - especially when working with kernel hooking drivers (keyloggers, filter drivers) that must be unloaded before the signed vulnerable driver.
+
+**Current configuration workflow:**
+
+1. **Load** `RTCore64.sys` (signed vulnerable driver)
+2. **Patch** DSE via callback table manipulation
+3. **Load** `omnidriver.sys` (unsigned payload)
+4. **Unpatch** DSE (restore original callbacks)
+5. **Unload** `RTCore64.sys`
+6. **Unload** `WdFilter` (Windows Defender filter driver)
+7. **Rename** `MsMpEng.exe` → `MsMpEng_.exe` (disable Windows Defender)
+
+### Windows Defender Neutralization
+
+The framework demonstrates security software bypass by:
+- Unloading `WdFilter.sys` (kernel filter driver)
+- Renaming the main executable to prevent service startup
+- Defender remains disabled until manual restoration
+
+**Manual restoration after boot:**
+```cmd
+cd C:\ProgramData\Microsoft\Windows Defender\Platform\4.18.25090.3009-0
+ren MsMpEng_.exe MsMpEng.exe
+```
+
+⚠️ **Critical:** When working with kernel hooking drivers, ensure proper unload sequence in `drivers.ini` to avoid conflicts with the signed vulnerable driver.
 ## Windows Early Boot DSE Bypass Solution
 
 
