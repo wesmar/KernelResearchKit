@@ -32,6 +32,7 @@ The framework demonstrates security software bypass by:
 cd C:\ProgramData\Microsoft\Windows Defender\Platform\4.18.25090.3009-0
 ren MsMpEng_.exe MsMpEng.exe
 ```
+After restoring the executable name, simply open **Virus & threat protection** in Windows Security - all services and drivers will restart automatically.
 
 ⚠️ **Critical:** When working with kernel hooking drivers, ensure proper unload sequence in `drivers.ini` to avoid conflicts with the signed vulnerable driver.
 ## Windows Early Boot DSE Bypass Solution
