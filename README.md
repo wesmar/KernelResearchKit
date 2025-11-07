@@ -1527,8 +1527,7 @@ After patching, the following occur:
 | **HVCI** | Requires separate disable + reboot (handled automatically) |
 | **Kernel Callbacks** | `ObRegisterCallbacks` cannot prevent this technique |
 | **Driver Blocklist** | Ineffective - signature not validated |
-Let me continue with Part 4: Advanced Capabilities and final sections.RetryYES!Part 4: README.md - Advanced Capabilities, Requirements, and Documentation
-markdown
+
 ---
 
 ## 🎯 Advanced Capabilities: Kernel-Mode Sovereignty
