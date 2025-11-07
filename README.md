@@ -65,7 +65,7 @@ Both paths achieve identical outcomes through different technical approaches, de
 Rather than crude binary patching or configuration flag manipulation, the framework performs a single, precise memory write operation: replacing the `CiValidateImageHeader` callback pointer in the kernel's `SeCiCallbacks` table with a pointer to `ZwFlushInstructionCache`. This exported kernel function possesses an identical signature and return behavior, effectively neutering signature validation while maintaining system stability.
 
 **Anti-Loop Protection System**  
-The framework implements a novel dual-layer protection mechanism against infinite reboot loops when handling Hypervisor-Protected Code Integrity (HVCI). This system combines native API cleanup routines with a self-destructing Windows service that ensures clean system state restoration across reboots.
+The framework implements a novel dual-layer protection mechanism against infinite reboot loops when handling Hypervisor-Protected Code Integrity (HVCI). The reboot mechanism transitioned from a minimal 592-byte assembly stub to CMD-based invocation (shutdown /r /t ...) to mitigate false-positive AV detections while maintaining operational integrity.
 
 ---
 
@@ -284,7 +284,8 @@ WCHAR imagePath[] = L"cmd.exe /c \"sc delete RebootGuardian & "
 Themes Service → DependOnService → RebootGuardian
 ```
 
-When the system reboots and services start, the Service Control Manager (SCM) attempts to start the Themes service. The Themes service has a dependency on RebootGuardian, so SCM starts RebootGuardian first.
+When the system reboots and services start, the Service Control Manager (SCM) attempts to start the Themes service. The Themes service has a dependency on RebootGuardian, so SCM starts RebootGuardian first. 
+Following system restart, the Service Control Manager (SCM) attempts to start the Themes service. Since Themes depends on RebootGuardian, SCM initiates RebootGuardian first. The reboot mechanism transitioned from kernel-native NtShutdownSystem to user-mode CMD invocation due to race conditions: kernel-space registry modifications were not persisted before shutdown completion, despite explicit NtFlushKey/ZwFlushKey synchronization attempts. User-mode shutdown provides sufficient time for Registry hive commit operations to complete, ensuring persistent state across reboots.
 
 **RebootGuardian Execution:**
 ```mermaid
