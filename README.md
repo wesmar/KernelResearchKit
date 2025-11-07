@@ -11,19 +11,19 @@
 
 ## 📋 Table of Contents
 
-- [Overview](#-overview)
-- [Architecture](#-architecture)
+- [Overview](#overview)
+- [Architecture](#architecture)
   - [Component 1: BootBypass (Native C)](#component-1-bootbypass-native-c---core-innovation)
   - [Component 2: drvloader (C++ Runtime)](#component-2-drvloader-c-runtime-alternative)
   - [Component 3: OmniDriver (Kernel Payload)](#component-3-omnidriver-kernel-payload)
-- [Quick Start](#-quick-start)
-- [Technical Deep Dive](#-technical-deep-dive)
-- [Deployment Automation](#-deployment-automation)
-- [System Requirements](#-system-requirements)
-- [Safety Features](#-safety-features)
-- [Advanced Capabilities](#-advanced-capabilities)
-- [Disclaimer](#-disclaimer)
-- [Further Reading](#-further-reading)
+- [Quick Start](#quick-start)
+- [Technical Deep Dive](#technical-deep-dive)
+- [Deployment Automation](#deployment-automation)
+- [System Requirements](#system-requirements)
+- [Safety Features](#safety-features)
+- [Advanced Capabilities](#advanced-capabilities)
+- [Disclaimer](#disclaimer)
+- [Further Reading](#further-reading)
 
 ---
 

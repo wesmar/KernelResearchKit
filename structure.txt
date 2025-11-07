@@ -1,0 +1,531 @@
+ Volume in drive C is SYSTEM
+ Volume Serial Number is 0000-0002
+
+ Directory of c:\Projekty\github\KernelResearchKit
+
+11/07/2025  11:53 AM    <DIR>          .
+11/06/2025  11:56 AM    <DIR>          ..
+11/07/2025  11:49 AM    <DIR>          .git
+09/23/2025  12:50 AM               254 .gitignore
+11/06/2025  01:45 PM    <DIR>          BootBypass
+11/07/2025  11:37 AM    <DIR>          data
+11/06/2025  11:59 AM    <DIR>          drvloader
+11/07/2025  11:39 AM             1,933 git-push.sh
+11/06/2025  11:59 AM    <DIR>          OmniDriver
+11/07/2025  11:39 AM               505 pack-data.sh
+11/07/2025  11:52 AM            84,623 README.md
+11/07/2025  11:53 AM                 0 structure.txt
+               5 File(s)         87,315 bytes
+
+ Directory of c:\Projekty\github\KernelResearchKit\.git
+
+11/07/2025  11:49 AM    <DIR>          .
+11/07/2025  11:53 AM    <DIR>          ..
+11/07/2025  11:49 AM                41 COMMIT_EDITMSG
+11/07/2025  11:49 AM               288 config
+11/07/2025  11:46 AM                73 description
+11/07/2025  11:49 AM                21 HEAD
+11/07/2025  11:46 AM    <DIR>          hooks
+11/07/2025  11:49 AM             3,437 index
+11/07/2025  11:46 AM    <DIR>          info
+11/07/2025  11:49 AM    <DIR>          logs
+11/07/2025  11:49 AM    <DIR>          objects
+11/07/2025  11:49 AM    <DIR>          refs
+               5 File(s)          3,860 bytes
+
+ Directory of c:\Projekty\github\KernelResearchKit\.git\hooks
+
+11/07/2025  11:46 AM    <DIR>          .
+11/07/2025  11:49 AM    <DIR>          ..
+11/07/2025  11:46 AM               478 applypatch-msg.sample
+11/07/2025  11:46 AM               896 commit-msg.sample
+11/07/2025  11:46 AM             4,726 fsmonitor-watchman.sample
+11/07/2025  11:46 AM               189 post-update.sample
+11/07/2025  11:46 AM               424 pre-applypatch.sample
+11/07/2025  11:46 AM             1,649 pre-commit.sample
+11/07/2025  11:46 AM               416 pre-merge-commit.sample
+11/07/2025  11:46 AM             1,374 pre-push.sample
+11/07/2025  11:46 AM             4,898 pre-rebase.sample
+11/07/2025  11:46 AM               544 pre-receive.sample
+11/07/2025  11:46 AM             1,492 prepare-commit-msg.sample
+11/07/2025  11:46 AM             2,783 push-to-checkout.sample
+11/07/2025  11:46 AM             2,308 sendemail-validate.sample
+11/07/2025  11:46 AM             3,650 update.sample
+              14 File(s)         25,827 bytes
+
+ Directory of c:\Projekty\github\KernelResearchKit\.git\info
+
+11/07/2025  11:46 AM    <DIR>          .
+11/07/2025  11:49 AM    <DIR>          ..
+11/07/2025  11:46 AM               240 exclude
+               1 File(s)            240 bytes
+
+ Directory of c:\Projekty\github\KernelResearchKit\.git\logs
+
+11/07/2025  11:49 AM    <DIR>          .
+11/07/2025  11:49 AM    <DIR>          ..
+11/07/2025  11:49 AM               561 HEAD
+11/07/2025  11:49 AM    <DIR>          refs
+               1 File(s)            561 bytes
+
+ Directory of c:\Projekty\github\KernelResearchKit\.git\logs\refs
+
+11/07/2025  11:49 AM    <DIR>          .
+11/07/2025  11:49 AM    <DIR>          ..
+11/07/2025  11:49 AM    <DIR>          heads
+11/07/2025  11:49 AM    <DIR>          remotes
+               0 File(s)              0 bytes
+
+ Directory of c:\Projekty\github\KernelResearchKit\.git\logs\refs\heads
+
+11/07/2025  11:49 AM    <DIR>          .
+11/07/2025  11:49 AM    <DIR>          ..
+11/07/2025  11:49 AM               376 main
+               1 File(s)            376 bytes
+
+ Directory of c:\Projekty\github\KernelResearchKit\.git\logs\refs\remotes
+
+11/07/2025  11:49 AM    <DIR>          .
+11/07/2025  11:49 AM    <DIR>          ..
+11/07/2025  11:49 AM    <DIR>          origin
+               0 File(s)              0 bytes
+
+ Directory of c:\Projekty\github\KernelResearchKit\.git\logs\refs\remotes\origin
+
+11/07/2025  11:49 AM    <DIR>          .
+11/07/2025  11:49 AM    <DIR>          ..
+11/07/2025  11:49 AM               147 main
+               1 File(s)            147 bytes
+
+ Directory of c:\Projekty\github\KernelResearchKit\.git\objects
+
+11/07/2025  11:49 AM    <DIR>          .
+11/07/2025  11:49 AM    <DIR>          ..
+11/07/2025  11:47 AM    <DIR>          02
+11/07/2025  11:47 AM    <DIR>          07
+11/07/2025  11:47 AM    <DIR>          19
+11/07/2025  11:47 AM    <DIR>          20
+11/07/2025  11:47 AM    <DIR>          38
+11/07/2025  11:47 AM    <DIR>          3a
+11/07/2025  11:47 AM    <DIR>          3c
+11/07/2025  11:47 AM    <DIR>          3d
+11/07/2025  11:47 AM    <DIR>          3f
+11/07/2025  11:49 AM    <DIR>          47
+11/07/2025  11:47 AM    <DIR>          49
+11/07/2025  11:47 AM    <DIR>          4b
+11/07/2025  11:47 AM    <DIR>          53
+11/07/2025  11:47 AM    <DIR>          5b
+11/07/2025  11:47 AM    <DIR>          66
+11/07/2025  11:47 AM    <DIR>          6c
+11/07/2025  11:49 AM    <DIR>          6f
+11/07/2025  11:47 AM    <DIR>          73
+11/07/2025  11:47 AM    <DIR>          81
+11/07/2025  11:47 AM    <DIR>          88
+11/07/2025  11:47 AM    <DIR>          96
+11/07/2025  11:47 AM    <DIR>          97
+11/07/2025  11:47 AM    <DIR>          98
+11/07/2025  11:47 AM    <DIR>          9c
+11/07/2025  11:47 AM    <DIR>          9d
+11/07/2025  11:49 AM    <DIR>          9f
+11/07/2025  11:47 AM    <DIR>          a4
+11/07/2025  11:49 AM    <DIR>          ad
+11/07/2025  11:47 AM    <DIR>          af
+11/07/2025  11:47 AM    <DIR>          b8
+11/07/2025  11:47 AM    <DIR>          b9
+11/07/2025  11:47 AM    <DIR>          c7
+11/07/2025  11:49 AM    <DIR>          cb
+11/07/2025  11:49 AM    <DIR>          e1
+11/07/2025  11:47 AM    <DIR>          f4
+11/07/2025  11:47 AM    <DIR>          f7
+11/07/2025  11:46 AM    <DIR>          info
+11/07/2025  11:46 AM    <DIR>          pack
+               0 File(s)              0 bytes
+
+ Directory of c:\Projekty\github\KernelResearchKit\.git\objects\02
+
+11/07/2025  11:47 AM    <DIR>          .
+11/07/2025  11:49 AM    <DIR>          ..
+11/07/2025  11:47 AM               733 b4f61880d658e0b53f6b4726d5d25f83ec42e8
+               1 File(s)            733 bytes
+
+ Directory of c:\Projekty\github\KernelResearchKit\.git\objects\07
+
+11/07/2025  11:47 AM    <DIR>          .
+11/07/2025  11:49 AM    <DIR>          ..
+11/07/2025  11:47 AM               179 ccc81a8d708c622f3bfe0c3efbf8d0b2a71526
+               1 File(s)            179 bytes
+
+ Directory of c:\Projekty\github\KernelResearchKit\.git\objects\19
+
+11/07/2025  11:47 AM    <DIR>          .
+11/07/2025  11:49 AM    <DIR>          ..
+11/07/2025  11:47 AM               408 57a8644e665cc9a700b75d74656116ae5f0134
+11/07/2025  11:47 AM               267 e9c543f0f48e3d9793e714aa1fbe49c2a1c8f1
+               2 File(s)            675 bytes
+
+ Directory of c:\Projekty\github\KernelResearchKit\.git\objects\20
+
+11/07/2025  11:47 AM    <DIR>          .
+11/07/2025  11:49 AM    <DIR>          ..
+11/07/2025  11:47 AM               496 2e8794c43c81797de0b8e4108f2925c6a50b8c
+               1 File(s)            496 bytes
+
+ Directory of c:\Projekty\github\KernelResearchKit\.git\objects\38
+
+11/07/2025  11:47 AM    <DIR>          .
+11/07/2025  11:49 AM    <DIR>          ..
+11/07/2025  11:47 AM               246 6141b4461b9439ebd0b436cceab5214b5d2951
+               1 File(s)            246 bytes
+
+ Directory of c:\Projekty\github\KernelResearchKit\.git\objects\3a
+
+11/07/2025  11:47 AM    <DIR>          .
+11/07/2025  11:49 AM    <DIR>          ..
+11/07/2025  11:47 AM             1,736 a127dee340df9b27cc71682850ff76d5d347b5
+               1 File(s)          1,736 bytes
+
+ Directory of c:\Projekty\github\KernelResearchKit\.git\objects\3c
+
+11/07/2025  11:47 AM    <DIR>          .
+11/07/2025  11:49 AM    <DIR>          ..
+11/07/2025  11:47 AM               502 ecb8dd740e3d3971055e3c50ba5a5ff91530aa
+               1 File(s)            502 bytes
+
+ Directory of c:\Projekty\github\KernelResearchKit\.git\objects\3d
+
+11/07/2025  11:47 AM    <DIR>          .
+11/07/2025  11:49 AM    <DIR>          ..
+11/07/2025  11:47 AM             1,286 7b66494843ef85aa61e332277dbc0c2930d636
+               1 File(s)          1,286 bytes
+
+ Directory of c:\Projekty\github\KernelResearchKit\.git\objects\3f
+
+11/07/2025  11:47 AM    <DIR>          .
+11/07/2025  11:49 AM    <DIR>          ..
+11/07/2025  11:47 AM               784 9d3ed4bbb7df48a3f4ac476331f61c6a1c2613
+               1 File(s)            784 bytes
+
+ Directory of c:\Projekty\github\KernelResearchKit\.git\objects\47
+
+11/07/2025  11:49 AM    <DIR>          .
+11/07/2025  11:49 AM    <DIR>          ..
+11/07/2025  11:49 AM               295 22956cf6673e13c4c15b52eb1cc06240cfd45f
+               1 File(s)            295 bytes
+
+ Directory of c:\Projekty\github\KernelResearchKit\.git\objects\49
+
+11/07/2025  11:47 AM    <DIR>          .
+11/07/2025  11:49 AM    <DIR>          ..
+11/07/2025  11:47 AM               483 e047716cf1d4a8f7bc8c3588cf8880e3b193a6
+               1 File(s)            483 bytes
+
+ Directory of c:\Projekty\github\KernelResearchKit\.git\objects\4b
+
+11/07/2025  11:47 AM    <DIR>          .
+11/07/2025  11:49 AM    <DIR>          ..
+11/07/2025  11:47 AM                15 825dc642cb6eb9a060e54bf8d69288fbee4904
+               1 File(s)             15 bytes
+
+ Directory of c:\Projekty\github\KernelResearchKit\.git\objects\53
+
+11/07/2025  11:47 AM    <DIR>          .
+11/07/2025  11:49 AM    <DIR>          ..
+11/07/2025  11:47 AM             5,993 ceebdbbf61a979e0fd902c86f81a6885dfec75
+               1 File(s)          5,993 bytes
+
+ Directory of c:\Projekty\github\KernelResearchKit\.git\objects\5b
+
+11/07/2025  11:47 AM    <DIR>          .
+11/07/2025  11:49 AM    <DIR>          ..
+11/07/2025  11:47 AM             2,854 cb80d3e1dfb9e974cf03f6937f50720290f6eb
+               1 File(s)          2,854 bytes
+
+ Directory of c:\Projekty\github\KernelResearchKit\.git\objects\66
+
+11/07/2025  11:47 AM    <DIR>          .
+11/07/2025  11:49 AM    <DIR>          ..
+11/07/2025  11:47 AM             1,114 1795777dc2266932edffc9ae4a0ce1e571271d
+11/07/2025  11:47 AM               774 407022ebd6b5ad8a3bce1e7b188fd801fa4f99
+               2 File(s)          1,888 bytes
+
+ Directory of c:\Projekty\github\KernelResearchKit\.git\objects\6c
+
+11/07/2025  11:47 AM    <DIR>          .
+11/07/2025  11:49 AM    <DIR>          ..
+11/07/2025  11:47 AM             1,383 6eafc302ed877d5460c749d95d15b9cb678551
+               1 File(s)          1,383 bytes
+
+ Directory of c:\Projekty\github\KernelResearchKit\.git\objects\6f
+
+11/07/2025  11:49 AM    <DIR>          .
+11/07/2025  11:49 AM    <DIR>          ..
+11/07/2025  11:49 AM               297 15bce36d173e3e1003894d8d764f1b4cd19a12
+               1 File(s)            297 bytes
+
+ Directory of c:\Projekty\github\KernelResearchKit\.git\objects\73
+
+11/07/2025  11:47 AM    <DIR>          .
+11/07/2025  11:49 AM    <DIR>          ..
+11/07/2025  11:47 AM               249 f9457e74a202d18721c0ed67579d20faa3c7c3
+               1 File(s)            249 bytes
+
+ Directory of c:\Projekty\github\KernelResearchKit\.git\objects\81
+
+11/07/2025  11:47 AM    <DIR>          .
+11/07/2025  11:49 AM    <DIR>          ..
+11/07/2025  11:47 AM             1,066 90e7edf1af54bdc7188811bdbb4adf56728abd
+               1 File(s)          1,066 bytes
+
+ Directory of c:\Projekty\github\KernelResearchKit\.git\objects\88
+
+11/07/2025  11:47 AM    <DIR>          .
+11/07/2025  11:49 AM    <DIR>          ..
+11/07/2025  11:47 AM               158 a550947edbc3c5003a41726f0749201fdb6822
+               1 File(s)            158 bytes
+
+ Directory of c:\Projekty\github\KernelResearchKit\.git\objects\96
+
+11/07/2025  11:47 AM    <DIR>          .
+11/07/2025  11:49 AM    <DIR>          ..
+11/07/2025  11:47 AM               522 61e39127276e980aa8894db30f8d8e2a9c4e6d
+               1 File(s)            522 bytes
+
+ Directory of c:\Projekty\github\KernelResearchKit\.git\objects\97
+
+11/07/2025  11:47 AM    <DIR>          .
+11/07/2025  11:49 AM    <DIR>          ..
+11/07/2025  11:47 AM               644 acde682aa9737828191ad70815c7d5b157de97
+               1 File(s)            644 bytes
+
+ Directory of c:\Projekty\github\KernelResearchKit\.git\objects\98
+
+11/07/2025  11:47 AM    <DIR>          .
+11/07/2025  11:49 AM    <DIR>          ..
+11/07/2025  11:47 AM               587 8347dbba6c3968f92a4defc4c2fff7bacf6102
+               1 File(s)            587 bytes
+
+ Directory of c:\Projekty\github\KernelResearchKit\.git\objects\9c
+
+11/07/2025  11:47 AM    <DIR>          .
+11/07/2025  11:49 AM    <DIR>          ..
+11/07/2025  11:47 AM            32,563 923e2b2227aec50ddbffa6d27912dab65c966c
+               1 File(s)         32,563 bytes
+
+ Directory of c:\Projekty\github\KernelResearchKit\.git\objects\9d
+
+11/07/2025  11:47 AM    <DIR>          .
+11/07/2025  11:49 AM    <DIR>          ..
+11/07/2025  11:47 AM               419 2a48470988459cc70ff8b596d9dd6c7c643477
+               1 File(s)            419 bytes
+
+ Directory of c:\Projekty\github\KernelResearchKit\.git\objects\9f
+
+11/07/2025  11:49 AM    <DIR>          .
+11/07/2025  11:49 AM    <DIR>          ..
+11/07/2025  11:49 AM               150 d6082fe1d3308ba6a256b8d10ef36f8afccb0f
+11/07/2025  11:47 AM             1,276 dac0f881afd05b92a1fd6123b2f03ca0a6c7d8
+               2 File(s)          1,426 bytes
+
+ Directory of c:\Projekty\github\KernelResearchKit\.git\objects\a4
+
+11/07/2025  11:47 AM    <DIR>          .
+11/07/2025  11:49 AM    <DIR>          ..
+11/07/2025  11:47 AM             1,104 03a810d2b40a90dbe10ba1cfa84c0fad408fbd
+               1 File(s)          1,104 bytes
+
+ Directory of c:\Projekty\github\KernelResearchKit\.git\objects\ad
+
+11/07/2025  11:49 AM    <DIR>          .
+11/07/2025  11:49 AM    <DIR>          ..
+11/07/2025  11:49 AM                52 0b1f9a21873f8948708457ae40a8ecea6c4a12
+               1 File(s)             52 bytes
+
+ Directory of c:\Projekty\github\KernelResearchKit\.git\objects\af
+
+11/07/2025  11:47 AM    <DIR>          .
+11/07/2025  11:49 AM    <DIR>          ..
+11/07/2025  11:47 AM               801 53845cec20a96ff9f886f0501918c3acee88d1
+               1 File(s)            801 bytes
+
+ Directory of c:\Projekty\github\KernelResearchKit\.git\objects\b8
+
+11/07/2025  11:47 AM    <DIR>          .
+11/07/2025  11:49 AM    <DIR>          ..
+11/07/2025  11:47 AM             6,853 9a45e0e80ff0cb8305b9f789b5dfd2374e377c
+               1 File(s)          6,853 bytes
+
+ Directory of c:\Projekty\github\KernelResearchKit\.git\objects\b9
+
+11/07/2025  11:47 AM    <DIR>          .
+11/07/2025  11:49 AM    <DIR>          ..
+11/07/2025  11:47 AM               151 d4e5e21e9703f552b3c6f8a63fb174e1d62e9e
+               1 File(s)            151 bytes
+
+ Directory of c:\Projekty\github\KernelResearchKit\.git\objects\c7
+
+11/07/2025  11:47 AM    <DIR>          .
+11/07/2025  11:49 AM    <DIR>          ..
+11/07/2025  11:47 AM               391 f83b7325c1ac79caed3d0899fe7cbcc39204a4
+               1 File(s)            391 bytes
+
+ Directory of c:\Projekty\github\KernelResearchKit\.git\objects\cb
+
+11/07/2025  11:49 AM    <DIR>          .
+11/07/2025  11:49 AM    <DIR>          ..
+11/07/2025  11:49 AM               465 5e3e0a75bd85fb806d3fe3c86da8194784d8ae
+11/07/2025  11:47 AM            12,056 8c797837b5058c3764febf248f6377fedf2f96
+               2 File(s)         12,521 bytes
+
+ Directory of c:\Projekty\github\KernelResearchKit\.git\objects\e1
+
+11/07/2025  11:49 AM    <DIR>          .
+11/07/2025  11:49 AM    <DIR>          ..
+11/07/2025  11:49 AM               191 4db709272ee1786df4d1278667df171ca48487
+               1 File(s)            191 bytes
+
+ Directory of c:\Projekty\github\KernelResearchKit\.git\objects\f4
+
+11/07/2025  11:47 AM    <DIR>          .
+11/07/2025  11:49 AM    <DIR>          ..
+11/07/2025  11:47 AM               794 c96df617fc7e774442ccf1c10055defdd9e06c
+               1 File(s)            794 bytes
+
+ Directory of c:\Projekty\github\KernelResearchKit\.git\objects\f7
+
+11/07/2025  11:47 AM    <DIR>          .
+11/07/2025  11:49 AM    <DIR>          ..
+11/07/2025  11:47 AM             1,357 77586685a1013e615b39caca2c318498122b10
+               1 File(s)          1,357 bytes
+
+ Directory of c:\Projekty\github\KernelResearchKit\.git\objects\info
+
+11/07/2025  11:46 AM    <DIR>          .
+11/07/2025  11:49 AM    <DIR>          ..
+               0 File(s)              0 bytes
+
+ Directory of c:\Projekty\github\KernelResearchKit\.git\objects\pack
+
+11/07/2025  11:46 AM    <DIR>          .
+11/07/2025  11:49 AM    <DIR>          ..
+               0 File(s)              0 bytes
+
+ Directory of c:\Projekty\github\KernelResearchKit\.git\refs
+
+11/07/2025  11:49 AM    <DIR>          .
+11/07/2025  11:49 AM    <DIR>          ..
+11/07/2025  11:49 AM    <DIR>          heads
+11/07/2025  11:49 AM    <DIR>          remotes
+11/07/2025  11:46 AM    <DIR>          tags
+               0 File(s)              0 bytes
+
+ Directory of c:\Projekty\github\KernelResearchKit\.git\refs\heads
+
+11/07/2025  11:49 AM    <DIR>          .
+11/07/2025  11:49 AM    <DIR>          ..
+11/07/2025  11:49 AM                41 main
+               1 File(s)             41 bytes
+
+ Directory of c:\Projekty\github\KernelResearchKit\.git\refs\remotes
+
+11/07/2025  11:49 AM    <DIR>          .
+11/07/2025  11:49 AM    <DIR>          ..
+11/07/2025  11:49 AM    <DIR>          origin
+               0 File(s)              0 bytes
+
+ Directory of c:\Projekty\github\KernelResearchKit\.git\refs\remotes\origin
+
+11/07/2025  11:49 AM    <DIR>          .
+11/07/2025  11:49 AM    <DIR>          ..
+11/07/2025  11:49 AM                41 main
+               1 File(s)             41 bytes
+
+ Directory of c:\Projekty\github\KernelResearchKit\.git\refs\tags
+
+11/07/2025  11:46 AM    <DIR>          .
+11/07/2025  11:49 AM    <DIR>          ..
+               0 File(s)              0 bytes
+
+ Directory of c:\Projekty\github\KernelResearchKit\BootBypass
+
+11/06/2025  01:45 PM    <DIR>          .
+11/07/2025  11:53 AM    <DIR>          ..
+11/06/2025  07:08 PM            53,900 BootBypass.c
+11/06/2025  08:59 AM             9,392 BootBypass.h
+11/06/2025  01:40 PM             4,860 BootBypass.rc
+11/04/2025  11:52 PM               903 BootBypass.sln
+11/06/2025  01:43 PM             3,786 BootBypass.vcxproj
+11/04/2025  11:52 PM             1,100 BootBypass.vcxproj.filters
+11/01/2025  07:11 PM               167 BootBypass.vcxproj.user
+11/06/2025  11:24 AM             2,762 drivers.ini
+11/06/2025  01:33 PM               404 resource.h
+               9 File(s)         77,274 bytes
+
+ Directory of c:\Projekty\github\KernelResearchKit\data
+
+11/07/2025  11:37 AM    <DIR>          .
+11/07/2025  11:53 AM    <DIR>          ..
+01/01/2026  12:00 AM            28,160 BootBypass.exe
+11/06/2025  03:42 PM             2,770 drivers.ini
+01/01/2026  12:00 AM            65,536 drvloader.exe
+11/06/2025  03:25 PM               541 implementer.bat
+11/06/2025  03:48 PM            16,072 implementer.ps1
+11/07/2025  11:33 AM            52,243 KernelResearchKit.7z
+10/25/2025  11:51 PM            11,056 OmniDriver.sys
+01/01/2026  12:00 AM            45,568 OmniUtility.exe
+10/10/2025  01:34 PM            12,125 README.txt
+10/17/2025  12:03 AM            14,024 rtcore64.sys
+              10 File(s)        248,095 bytes
+
+ Directory of c:\Projekty\github\KernelResearchKit\drvloader
+
+11/06/2025  11:59 AM    <DIR>          .
+11/07/2025  11:53 AM    <DIR>          ..
+11/06/2025  01:16 PM            24,068 drvloader.cpp
+11/06/2025  12:28 PM               876 drvloader.h
+11/06/2025  01:24 PM             4,718 drvloader.rc
+11/02/2025  07:34 PM               911 drvloader.sln
+11/02/2025  07:28 PM             3,955 drvloader.vcxproj
+11/02/2025  07:28 PM               982 drvloader.vcxproj.filters
+09/17/2025  06:11 PM               168 drvloader.vcxproj.user
+11/06/2025  11:57 AM    <DIR>          ICON
+11/02/2025  07:32 PM               452 resource.h
+               8 File(s)         36,130 bytes
+
+ Directory of c:\Projekty\github\KernelResearchKit\drvloader\ICON
+
+11/06/2025  11:57 AM    <DIR>          .
+11/06/2025  11:59 AM    <DIR>          ..
+09/15/2025  10:58 PM             9,662 kvc.ico
+               1 File(s)          9,662 bytes
+
+ Directory of c:\Projekty\github\KernelResearchKit\OmniDriver
+
+11/06/2025  11:59 AM    <DIR>          .
+11/07/2025  11:53 AM    <DIR>          ..
+11/06/2025  11:58 AM    <DIR>          ICON
+11/06/2025  11:27 AM             4,961 OmniDriver.cpp
+10/25/2025  08:57 AM             1,509 OmniDriver.h
+10/25/2025  08:53 AM             1,793 OmniDriver.inf
+10/25/2025  09:21 AM             1,994 OmniDriver.rc
+10/25/2025  10:28 AM             2,913 OmniDriver.vcxproj
+10/25/2025  09:22 AM             1,529 OmniDriver.vcxproj.filters
+10/25/2025  10:22 AM             1,282 OmniProject.sln
+11/07/2025  01:21 AM            23,361 OmniUtility.cpp
+11/06/2025  10:40 AM             1,854 OmniUtility.h
+10/25/2025  10:06 AM             2,367 OmniUtility.rc
+10/25/2025  10:07 AM             4,006 OmniUtility.vcxproj
+10/25/2025  10:08 AM             1,113 OmniUtility.vcxproj.filters
+10/25/2025  10:09 AM               168 OmniUtility.vcxproj.user
+10/25/2025  10:03 AM               399 resource.h
+              14 File(s)         49,249 bytes
+
+ Directory of c:\Projekty\github\KernelResearchKit\OmniDriver\ICON
+
+11/06/2025  11:58 AM    <DIR>          .
+11/06/2025  11:59 AM    <DIR>          ..
+09/15/2025  10:58 PM             9,662 kvc.ico
+               1 File(s)          9,662 bytes
+
+     Total Files Listed:
+             113 File(s)        630,174 bytes
+             176 Dir(s)  1,063,727,091,712 bytes free
