@@ -312,7 +312,7 @@ sequenceDiagram
     Note over SCM: System Reboots - Clean State
 ```
 
-**Complete Three-Boot Sequence:**
+**Complete Two-Boot Sequence:**
 ```mermaid
 graph TD
     subgraph "Boot 1: HVCI Detection"
@@ -367,7 +367,7 @@ graph TD
 
 The system is now operational: HVCI physically disabled but registry shows Enabled=1 (satisfies cosmetic AV checks), DSE bypassed, unsigned driver loaded, no Guardian artifacts remaining.
 
-CRITICAL OPERATIONAL NOTE: The system remains in this functional state as long as it continues running or performs normal shutdowns. However, if the system performs a full reboot, HVCI will physically re-enable due to the Enabled=1 registry value set by RestoreHVCI. This triggers a return to Boot One state, initiating the three-boot sequence again. The framework operates on the assumption that once DSE is bypassed and the unsigned driver is loaded, the operator's objective is achieved and system reboots are either unnecessary or intentionally managed. For persistent deployments requiring frequent reboots, operators should either maintain HVCI disabled by removing the RestoreHVCI call, or implement additional persistence mechanisms that survive the three-boot cycle.
+CRITICAL OPERATIONAL NOTE: The system remains in this functional state as long as it continues running or performs normal shutdowns. However, if the system performs a full reboot, HVCI will physically re-enable due to the Enabled=1 registry value set by RestoreHVCI. This triggers a return to Boot One state, initiating the two-boot sequence again. The framework operates on the assumption that once DSE is bypassed and the unsigned driver is loaded, the operator's objective is achieved and system reboots are either unnecessary or intentionally managed. For persistent deployments requiring frequent reboots, operators should either maintain HVCI disabled by removing the RestoreHVCI call, or implement additional persistence mechanisms that survive the two-boot cycle.
 
 **Why Dual-Layer Protection is Essential:**
 
