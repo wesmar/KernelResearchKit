@@ -1,6 +1,19 @@
-## 🚧 Work in Progress
+## 🚧 Recent Updates
+**New Addition:** `drvloader_pdb.exe` - Universal DSE bypass with dynamic symbol resolution
 
-**README.md completion:** Tonight (detailed installation guide and technical documentation)
+This enhanced version eliminates hardcoded kernel offsets by implementing automatic PDB (Program Database) symbol resolution from Microsoft's public symbol server. The tool dynamically:
+
+1. **Extracts debug information** from the target PE executable (`ntoskrnl.exe`) including PDB filename and GUID/signature
+2. **Downloads matching symbols** from `https://msdl.microsoft.com/download/symbols` using the CodeView debug directory structure
+3. **Resolves kernel addresses** at runtime via DbgHelp API (`SymFromNameW`) for critical structures:
+   - `SeCiCallbacks` - Code Integrity callback table base
+   - `ZwFlushInstructionCache` - Safe function pointer for callback replacement
+4. **Calculates live offsets** by combining runtime kernel base address (via `EnumDeviceDrivers`) with PDB-derived RVAs
+
+**Technical advantages:**
+- **Version-agnostic operation** - Works across Windows 10/11/Server builds without recompilation
+- **Automatic adaptation** - Handles kernel variations (`ntoskrnl.exe`, `ntkrnlmp.exe`, `ntkrnlpa.exe`)
+- **Offset validation** - Provides configuration output for native/boot-time tools via `[2] Show offset information`
 
 **Video demonstration:** [Watch the framework in action](https://youtu.be/6VWmxrt4wNE)
 
