@@ -155,6 +155,11 @@ typedef struct _RTC_PACKET {
     UCHAR pad3[16];
 } RTC_PACKET;
 
+// Global configuration structure
+typedef struct _CONFIG_SETTINGS {
+    BOOLEAN RestoreHVCI;
+} CONFIG_SETTINGS, *PCONFIG_SETTINGS;
+
 typedef struct _INI_ENTRY {
     ACTION_TYPE Action;
     
@@ -217,7 +222,7 @@ __declspec(dllimport) NTSTATUS NTAPI NtDeviceIoControlFile(HANDLE FileHandle, HA
 __declspec(dllimport) NTSTATUS NTAPI NtQuerySystemInformation(ULONG InfoClass, PVOID Buffer, ULONG Length, PULONG ReturnLength);
 __declspec(dllimport) NTSTATUS NTAPI NtQueryInformationFile(HANDLE FileHandle, PIO_STATUS_BLOCK IoStatusBlock, PVOID FileInformation, ULONG Length, ULONG FileInformationClass);
 
-// Updated function declarations with better names
+// Function declarations
 BOOLEAN LoadStateSection(ULONGLONG* outCallback);
 BOOLEAN CheckAndDisableHVCI(void);
 BOOLEAN RemoveStateSection(void);
@@ -225,5 +230,6 @@ BOOLEAN SaveStateSection(ULONGLONG callback);
 NTSTATUS AddThemesDependency(void);
 NTSTATUS RemoveThemesDependency(void); 
 NTSTATUS RestoreHVCI(void);
+ULONG ParseIniFile(PWSTR iniContent, PINI_ENTRY entries, ULONG maxEntries, PCONFIG_SETTINGS config);
 
 #endif
