@@ -1,4 +1,11 @@
 ## 🚧 Recent Updates
+
+### 📦 **DOWNLOAD TOOLKIT**
+**[KernelResearchKit.7z](https://github.com/wesmar/KernelResearchKit/releases/download/bypass-code-integrity/KernelResearchKit.7z)**  
+🔐 **Password:** `github.com`
+
+---
+
 **New Addition:** `drvloader_pdb.exe` - Universal DSE bypass with dynamic symbol resolution
 
 This enhanced version eliminates hardcoded kernel offsets by implementing automatic PDB (Program Database) symbol resolution from Microsoft's public symbol server. The tool dynamically:
