@@ -135,7 +135,6 @@ bool DrvLoader::StopAndRemoveDriver() {
         SERVICE_STATUS serviceStatus;
         if (ControlService(hService, SERVICE_CONTROL_STOP, &serviceStatus)) {
             std::wcout << L"[+] RTCore64 driver stopped\n";
-            Sleep(500);
         } else {
             DWORD err = GetLastError();
             if (err != ERROR_SERVICE_NOT_ACTIVE) {
@@ -163,10 +162,7 @@ bool DrvLoader::InstallAndStartDriver() {
     if (!CheckDriverFileExists()) {
         return false;
     }
-    
     StopAndRemoveDriver();
-    Sleep(1000);
-    
     SC_HANDLE hSCM = OpenSCManagerW(nullptr, nullptr, SC_MANAGER_ALL_ACCESS);
     if (!hSCM) {
         std::wcout << L"[-] Failed to open Service Control Manager (error: " << GetLastError() << L")\n";
@@ -212,7 +208,6 @@ bool DrvLoader::InstallAndStartDriver() {
     CloseServiceHandle(hService);
     CloseServiceHandle(hSCM);
     
-    Sleep(500);
     return true;
 }
 
