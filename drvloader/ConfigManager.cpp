@@ -70,26 +70,45 @@ bool UpdateDriversIni(uint64_t seCiCallbacks, uint64_t safeFunction) {
         content = std::wstring((wchar_t*)buffer.data(), fileSize / sizeof(wchar_t));
     }
 
-    size_t patchPos = content.find(L"[Patch1]");
-    if (patchPos == std::wstring::npos) {
-        std::wcout << L"[-] [Patch1] section not found\n";
+    // Find [Config] section
+    size_t configPos = content.find(L"[Config]");
+    if (configPos == std::wstring::npos) {
+        std::wcout << L"[-] [Config] section not found\n";
         return false;
     }
 
-    size_t nextSection = content.find(L"\n[", patchPos + 1);
-    size_t sectionEnd = (nextSection != std::wstring::npos) ? nextSection : content.length();
+    // Find IoControlCode_Write line as our anchor point
+    size_t anchorPos = content.find(L"IoControlCode_Write=", configPos);
+    if (anchorPos == std::wstring::npos) {
+        std::wcout << L"[-] IoControlCode_Write not found in [Config] section\n";
+        return false;
+    }
 
-    // Check if current values are already correct
+    // Find the end of the anchor line
+    size_t anchorLineEnd = content.find(L'\n', anchorPos);
+    if (anchorLineEnd == std::wstring::npos) {
+        anchorLineEnd = content.length();
+    }
+
+    // Insert position is right after the anchor line
+    size_t insertPosition = anchorLineEnd;
+
+    // Prepare expected values
     std::wstringstream expectedSeCi;
     expectedSeCi << L"Offset_SeCiCallbacks=0x" << std::hex << std::uppercase << seCiCallbacks;
 
     std::wstringstream expectedSafe;
     expectedSafe << L"Offset_SafeFunction=0x" << std::hex << std::uppercase << safeFunction;
 
+    // Check if current values are already correct
     bool seCiNeedsUpdate = true;
     bool safeNeedsUpdate = true;
 
-    size_t seCiPos = content.find(L"Offset_SeCiCallbacks=", patchPos);
+    // Find section boundaries for checking existing values
+    size_t nextSection = content.find(L"\n[", configPos + 1);
+    size_t sectionEnd = (nextSection != std::wstring::npos) ? nextSection : content.length();
+
+    size_t seCiPos = content.find(L"Offset_SeCiCallbacks=", configPos);
     if (seCiPos != std::wstring::npos && seCiPos < sectionEnd) {
         size_t lineEnd = content.find(L'\n', seCiPos);
         if (lineEnd == std::wstring::npos) lineEnd = content.length();
@@ -99,7 +118,7 @@ bool UpdateDriversIni(uint64_t seCiCallbacks, uint64_t safeFunction) {
         }
     }
 
-    size_t safePos = content.find(L"Offset_SafeFunction=", patchPos);
+    size_t safePos = content.find(L"Offset_SafeFunction=", configPos);
     if (safePos != std::wstring::npos && safePos < sectionEnd) {
         size_t lineEnd = content.find(L'\n', safePos);
         if (lineEnd == std::wstring::npos) lineEnd = content.length();
@@ -115,19 +134,34 @@ bool UpdateDriversIni(uint64_t seCiCallbacks, uint64_t safeFunction) {
         return true;
     }
 
-    // Update Offset_SeCiCallbacks
-    if (seCiNeedsUpdate && seCiPos != std::wstring::npos && seCiPos < sectionEnd) {
-        size_t lineEnd = content.find(L'\n', seCiPos);
-        if (lineEnd == std::wstring::npos) lineEnd = content.length();
-        content.replace(seCiPos, lineEnd - seCiPos, expectedSeCi.str());
+    // Update existing lines or add new ones
+    if (seCiNeedsUpdate) {
+        if (seCiPos != std::wstring::npos && seCiPos < sectionEnd) {
+            // Update existing line
+            size_t lineEnd = content.find(L'\n', seCiPos);
+            if (lineEnd == std::wstring::npos) lineEnd = content.length();
+            content.replace(seCiPos, lineEnd - seCiPos, expectedSeCi.str());
+        } else {
+            // Add new line after IoControlCode_Write
+            std::wstring newLine = L"\n" + expectedSeCi.str();
+            content.insert(insertPosition, newLine);
+            insertPosition += newLine.length(); // Update insert position for next line
+        }
     }
 
-    // Update Offset_SafeFunction
-    safePos = content.find(L"Offset_SafeFunction=", patchPos);
-    if (safeNeedsUpdate && safePos != std::wstring::npos && safePos < sectionEnd) {
-        size_t lineEnd = content.find(L'\n', safePos);
-        if (lineEnd == std::wstring::npos) lineEnd = content.length();
-        content.replace(safePos, lineEnd - safePos, expectedSafe.str());
+    if (safeNeedsUpdate) {
+        // Re-find after potential modifications
+        safePos = content.find(L"Offset_SafeFunction=", configPos);
+        if (safePos != std::wstring::npos && safePos < sectionEnd) {
+            // Update existing line
+            size_t lineEnd = content.find(L'\n', safePos);
+            if (lineEnd == std::wstring::npos) lineEnd = content.length();
+            content.replace(safePos, lineEnd - safePos, expectedSafe.str());
+        } else {
+            // Add new line after IoControlCode_Write (or after previously added line)
+            std::wstring newLine = L"\n" + expectedSafe.str();
+            content.insert(insertPosition, newLine);
+        }
     }
 
     // Write back with UTF-16 LE BOM

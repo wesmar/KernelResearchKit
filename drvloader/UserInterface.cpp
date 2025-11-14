@@ -53,7 +53,7 @@ void DisplayOffsetInfo(DrvLoader& loader) {
     auto zwFlushOffset = loader.symbolDownloader.GetSymbolOffset(ntoskrnlPath, L"ZwFlushInstructionCache");
     
     if (seCiCallbacksOffset && zwFlushOffset) {
-        std::wcout << L"[Patch1] section in drivers.ini:\n";
+        std::wcout << L"[Config] section in drivers.ini:\n";
         std::wcout << L"....................................\n";
         
         std::wcout << L"Offset_SeCiCallbacks=0x" << std::hex << std::uppercase << *seCiCallbacksOffset << std::dec << L"\n";

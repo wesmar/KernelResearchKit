@@ -74,9 +74,8 @@ typedef ULONG* PULONG;
 typedef enum _ACTION_TYPE {
     ACTION_LOAD = 0,
     ACTION_UNLOAD = 1,
-    ACTION_PATCH_DSE = 2,
-    ACTION_UNPATCH_DSE = 3,
-    ACTION_RENAME = 4
+    ACTION_RENAME = 2
+    // Note: ACTION_PATCH_DSE and ACTION_UNPATCH_DSE removed - integrated into AutoPatch
 } ACTION_TYPE;
 
 typedef struct _UNICODE_STRING {
@@ -158,6 +157,12 @@ typedef struct _RTC_PACKET {
 // Global configuration structure
 typedef struct _CONFIG_SETTINGS {
     BOOLEAN RestoreHVCI;
+    WCHAR DriverDevice[MAX_PATH_LEN];
+    ULONG IoControlCode_Read;
+    ULONG IoControlCode_Write;
+    ULONGLONG Offset_SeCiCallbacks;
+    ULONGLONG Offset_Callback;
+    ULONGLONG Offset_SafeFunction;
 } CONFIG_SETTINGS, *PCONFIG_SETTINGS;
 
 typedef struct _INI_ENTRY {
@@ -170,15 +175,7 @@ typedef struct _INI_ENTRY {
     WCHAR DriverType[16];
     WCHAR StartType[16];
     BOOLEAN CheckIfLoaded;
-    
-    // For PATCH/UNPATCH actions
-    WCHAR DriverDevice[MAX_PATH_LEN];
-    ULONG IoControlCode_Read;
-    ULONG IoControlCode_Write;
-    WCHAR TargetModule[MAX_PATH_LEN];
-    ULONGLONG Offset_SeCiCallbacks;
-    ULONGLONG Offset_Callback;
-    ULONGLONG Offset_SafeFunction;
+    BOOLEAN AutoPatch;  // New: Automatic DSE patch/unpatch for driver loading
     
     // For RENAME actions
     WCHAR SourcePath[MAX_PATH_LEN];
@@ -231,5 +228,8 @@ NTSTATUS AddThemesDependency(void);
 NTSTATUS RemoveThemesDependency(void); 
 NTSTATUS RestoreHVCI(void);
 ULONG ParseIniFile(PWSTR iniContent, PINI_ENTRY entries, ULONG maxEntries, PCONFIG_SETTINGS config);
+
+// New function for AutoPatch functionality
+NTSTATUS ExecuteAutoPatchLoad(PINI_ENTRY entry, PCONFIG_SETTINGS config);
 
 #endif

