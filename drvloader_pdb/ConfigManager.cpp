@@ -199,7 +199,7 @@ bool SaveOffsetsToRegistry(uint64_t seCiCallbacks, uint64_t safeFunction, const 
     
     std::wcout << L"[+] Saved offsets to registry: HKCU\\Software\\drvloader\\History\\" << timestamp << L"\n";
     
-    // Keep only last 8 history entries
+    // Keep only the last 8 history entries
     HKEY hHistoryKey;
     if (RegOpenKeyExW(HKEY_CURRENT_USER, L"Software\\drvloader\\History", 0, 
         KEY_READ | KEY_WRITE, &hHistoryKey) == ERROR_SUCCESS) {

@@ -102,8 +102,9 @@
   </ItemDefinitionGroup>
 
   <ItemGroup>
-    <ClCompile Include="drvloader.cpp" />
+    <ClCompile Include="DrvLoader.cpp" />
     <ClCompile Include="ConfigManager.cpp" />
+	<ClCompile Include="ResourceInstaller.cpp" />
     <ClCompile Include="DrvCore.cpp" />
     <ClCompile Include="SymbolDownloader.cpp" />
     <ClCompile Include="UserInterface.cpp" />
@@ -112,6 +113,7 @@
   <ItemGroup>
     <ClInclude Include="resource.h" />
     <ClInclude Include="ConfigManager.h" />
+    <ClInclude Include="ResourceInstaller.h" />
     <ClInclude Include="DrvCore.h" />
     <ClInclude Include="SymbolDownloader.h" />
     <ClInclude Include="UserInterface.h" />

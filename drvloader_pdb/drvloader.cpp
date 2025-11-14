@@ -1,5 +1,3 @@
-﻿#define NOMINMAX
-
 #include "UserInterface.h"
 #include "DrvCore.h"
 #include "ConfigManager.h"

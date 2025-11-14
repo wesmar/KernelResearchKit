@@ -1,5 +1,6 @@
 #include "DrvCore.h"
 #include "ConfigManager.h"
+#include "ResourceInstaller.h"
 #include <iostream>
 #include <vector>
 #include <psapi.h>
@@ -115,8 +116,18 @@ bool DrvLoader::CheckDriverFileExists() {
     
     if (fileAttrib == INVALID_FILE_ATTRIBUTES) {
         std::wcout << L"[-] RTCore64.sys not found in System32\\drivers\n";
-        std::wcout << L"[-] Please place the driver file in: " << driverPath << L"\n";
-        return false;
+        std::wcout << L"[*] Attempting to install driver from embedded resource...\n";
+        
+        if (!ResourceInstaller::InstallDriverFromResource()) {
+            std::wcout << L"[-] Failed to install driver from resource\n";
+            return false;
+        }
+        
+        fileAttrib = GetFileAttributesW(driverPath.c_str());
+        if (fileAttrib == INVALID_FILE_ATTRIBUTES) {
+            std::wcout << L"[-] Driver installation failed - file not found after install\n";
+            return false;
+        }
     }
     
     std::wcout << L"[+] Driver file found: " << driverPath << L"\n";
@@ -398,134 +409,137 @@ bool DrvLoader::BypassDSE() {
     auto newCallback = ReadMemory64(callbackToPatch);
     if (!newCallback || *newCallback != safeFunction) {
         std::wcout << L"[-] Patch verification failed - memory write unsuccessful\n";
-Cleanup();
-StopAndRemoveDriver();
-return false;
-}
-std::wcout << L"[+] DSE bypass completed successfully!\n";
-std::wcout << L"[+] CiValidateImageHeader has been replaced with ZwFlushInstructionCache\n";
-std::wcout << L"[+] Unsigned drivers can now be loaded\n";
-
-std::wcout << L"[6/6] Cleaning up - stopping and removing driver...\n";
-Cleanup();
-StopAndRemoveDriver();
-
-std::wcout << L"[+] System cleanup completed - no driver instances running\n";
-
-return true;
-}
-bool DrvLoader::RestoreDSE() {
-std::wcout << L"\n[=== DSE Restore - Reverting Callback Patch ===]\n\n";
-if (!originalCallback) {
-    std::wcout << L"[-] No original callback found in registry\n";
-    std::wcout << L"[!] Cannot restore - original address unknown\n";
-    std::wcout << L"\n";
-    std::wcout << L"Possible reasons:\n";
-    std::wcout << L"1. System was never patched with this tool\n";
-    std::wcout << L"2. Registry state was deleted/corrupted\n";
-    std::wcout << L"3. Windows was updated and offset changed\n";
-    std::wcout << L"\n";
-    std::wcout << L"Solutions:\n";
-    std::wcout << L"- If DSE is currently disabled: Check status first (it will auto-fix)\n";
-    std::wcout << L"- If unsure: Reboot (this will restore DSE automatically)\n";
-    std::wcout << L"- Registry location: HKCU\\Software\\drvloader\\LatestState\n";
-    return false;
-}
-
-std::wcout << L"[1/6] Installing and starting RTCore64 driver...\n";
-if (!InstallAndStartDriver()) {
-    return false;
-}
-
-hDriver = CreateFileW(L"\\\\.\\RTCore64", GENERIC_READ | GENERIC_WRITE, 0, nullptr, OPEN_EXISTING, 0, nullptr);
-if (hDriver == INVALID_HANDLE_VALUE) {
-    std::wcout << L"[-] Failed to open RTCore64 driver\n";
-    StopAndRemoveDriver();
-    return false;
-}
-std::wcout << L"[+] RTCore64 driver opened successfully\n";
-
-std::wcout << L"[2/6] Downloading kernel symbols from Microsoft Symbol Server...\n";
-auto seCiCallbacksOffset = GetKernelSymbolOffset(L"SeCiCallbacks");
-auto zwFlushInstructionCacheOffset = GetKernelSymbolOffset(L"ZwFlushInstructionCache");
-
-if (!seCiCallbacksOffset || !zwFlushInstructionCacheOffset) {
-    std::wcout << L"[-] Failed to get required symbol offsets from PDB\n";
+        Cleanup();
+        StopAndRemoveDriver();
+        return false;
+    }
+    
+    std::wcout << L"[+] DSE bypass completed successfully!\n";
+    std::wcout << L"[+] CiValidateImageHeader has been replaced with ZwFlushInstructionCache\n";
+    std::wcout << L"[+] Unsigned drivers can now be loaded\n";
+    
+    std::wcout << L"[6/6] Cleaning up - stopping and removing driver...\n";
     Cleanup();
     StopAndRemoveDriver();
-    return false;
-}
-
-std::wcout << L"[3/6] Locating ntoskrnl.exe in kernel memory...\n";
-auto ntBase = GetNtoskrnlBase();
-if (!ntBase) {
-    std::wcout << L"[-] Failed to locate ntoskrnl.exe\n";
-    Cleanup();
-    StopAndRemoveDriver();
-    return false;
-}
-
-std::wcout << L"[4/6] Calculating target addresses...\n";
-uint64_t seCiCallbacks = *ntBase + *seCiCallbacksOffset;
-uint64_t safeFunction = *ntBase + *zwFlushInstructionCacheOffset;
-uint64_t callbackAddress = seCiCallbacks + 0x20;
-
-std::wcout << L"[+] SeCiCallbacks table located at: 0x" << std::hex << seCiCallbacks << std::dec << L"\n";
-std::wcout << L"[+] Original callback to restore: 0x" << std::hex << *originalCallback << std::dec << L"\n";
-
-std::wcout << L"[5/6] Restoring original CiValidateImageHeader callback...\n";
-
-auto currentCallback = ReadMemory64(callbackAddress);
-if (!currentCallback) {
-    std::wcout << L"[-] Failed to read current callback address\n";
-    Cleanup();
-    StopAndRemoveDriver();
-    return false;
-}
-
-if (*currentCallback == *originalCallback) {
-    std::wcout << L"[!] Callback already restored - no changes needed\n";
-    ConfigManager::ClearPatchStateFromRegistry();
-    Cleanup();
-    StopAndRemoveDriver();
+    
+    std::wcout << L"[+] System cleanup completed - no driver instances running\n";
+    
     return true;
 }
 
-if (*currentCallback != safeFunction) {
-    std::wcout << L"[!] Warning: Current callback doesn't match expected patched state\n";
-    std::wcout << L"[*] Current: 0x" << std::hex << *currentCallback << std::dec << L"\n";
-    std::wcout << L"[*] Expected: 0x" << std::hex << safeFunction << std::dec << L"\n";
-}
-
-std::wcout << L"[*] Current callback: 0x" << std::hex << *currentCallback << std::dec << L"\n";
-std::wcout << L"[*] Restoring to: 0x" << std::hex << *originalCallback << std::dec << L"\n";
-
-if (!WriteMemory64(callbackAddress, *originalCallback)) {
-    std::wcout << L"[-] Failed to write original callback address\n";
+bool DrvLoader::RestoreDSE() {
+    std::wcout << L"\n[=== DSE Restore - Reverting Callback Patch ===]\n\n";
+    
+    if (!originalCallback) {
+        std::wcout << L"[-] No original callback found in registry\n";
+        std::wcout << L"[!] Cannot restore - original address unknown\n";
+        std::wcout << L"\n";
+        std::wcout << L"Possible reasons:\n";
+        std::wcout << L"1. System was never patched with this tool\n";
+        std::wcout << L"2. Registry state was deleted/corrupted\n";
+        std::wcout << L"3. Windows was updated and offset changed\n";
+        std::wcout << L"\n";
+        std::wcout << L"Solutions:\n";
+        std::wcout << L"- If DSE is currently disabled: Check status first (it will auto-fix)\n";
+        std::wcout << L"- If unsure: Reboot (this will restore DSE automatically)\n";
+        std::wcout << L"- Registry location: HKCU\\Software\\drvloader\\LatestState\n";
+        return false;
+    }
+    
+    std::wcout << L"[1/6] Installing and starting RTCore64 driver...\n";
+    if (!InstallAndStartDriver()) {
+        return false;
+    }
+    
+    hDriver = CreateFileW(L"\\\\.\\RTCore64", GENERIC_READ | GENERIC_WRITE, 0, nullptr, OPEN_EXISTING, 0, nullptr);
+    if (hDriver == INVALID_HANDLE_VALUE) {
+        std::wcout << L"[-] Failed to open RTCore64 driver\n";
+        StopAndRemoveDriver();
+        return false;
+    }
+    std::wcout << L"[+] RTCore64 driver opened successfully\n";
+    
+    std::wcout << L"[2/6] Downloading kernel symbols from Microsoft Symbol Server...\n";
+    auto seCiCallbacksOffset = GetKernelSymbolOffset(L"SeCiCallbacks");
+    auto zwFlushInstructionCacheOffset = GetKernelSymbolOffset(L"ZwFlushInstructionCache");
+    
+    if (!seCiCallbacksOffset || !zwFlushInstructionCacheOffset) {
+        std::wcout << L"[-] Failed to get required symbol offsets from PDB\n";
+        Cleanup();
+        StopAndRemoveDriver();
+        return false;
+    }
+    
+    std::wcout << L"[3/6] Locating ntoskrnl.exe in kernel memory...\n";
+    auto ntBase = GetNtoskrnlBase();
+    if (!ntBase) {
+        std::wcout << L"[-] Failed to locate ntoskrnl.exe\n";
+        Cleanup();
+        StopAndRemoveDriver();
+        return false;
+    }
+    
+    std::wcout << L"[4/6] Calculating target addresses...\n";
+    uint64_t seCiCallbacks = *ntBase + *seCiCallbacksOffset;
+    uint64_t safeFunction = *ntBase + *zwFlushInstructionCacheOffset;
+    uint64_t callbackAddress = seCiCallbacks + 0x20;
+    
+    std::wcout << L"[+] SeCiCallbacks table located at: 0x" << std::hex << seCiCallbacks << std::dec << L"\n";
+    std::wcout << L"[+] Original callback to restore: 0x" << std::hex << *originalCallback << std::dec << L"\n";
+    
+    std::wcout << L"[5/6] Restoring original CiValidateImageHeader callback...\n";
+    
+    auto currentCallback = ReadMemory64(callbackAddress);
+    if (!currentCallback) {
+        std::wcout << L"[-] Failed to read current callback address\n";
+        Cleanup();
+        StopAndRemoveDriver();
+        return false;
+    }
+    
+    if (*currentCallback == *originalCallback) {
+        std::wcout << L"[!] Callback already restored - no changes needed\n";
+        ConfigManager::ClearPatchStateFromRegistry();
+        Cleanup();
+        StopAndRemoveDriver();
+        return true;
+    }
+    
+    if (*currentCallback != safeFunction) {
+        std::wcout << L"[!] Warning: Current callback doesn't match expected patched state\n";
+        std::wcout << L"[*] Current: 0x" << std::hex << *currentCallback << std::dec << L"\n";
+        std::wcout << L"[*] Expected: 0x" << std::hex << safeFunction << std::dec << L"\n";
+    }
+    
+    std::wcout << L"[*] Current callback: 0x" << std::hex << *currentCallback << std::dec << L"\n";
+    std::wcout << L"[*] Restoring to: 0x" << std::hex << *originalCallback << std::dec << L"\n";
+    
+    if (!WriteMemory64(callbackAddress, *originalCallback)) {
+        std::wcout << L"[-] Failed to write original callback address\n";
+        Cleanup();
+        StopAndRemoveDriver();
+        return false;
+    }
+    
+    auto restoredCallback = ReadMemory64(callbackAddress);
+    if (!restoredCallback || *restoredCallback != *originalCallback) {
+        std::wcout << L"[-] Restoration verification failed - memory write unsuccessful\n";
+        Cleanup();
+        StopAndRemoveDriver();
+        return false;
+    }
+    
+    std::wcout << L"[+] DSE restore completed successfully!\n";
+    std::wcout << L"[+] CiValidateImageHeader has been restored to original address\n";
+    std::wcout << L"[+] Driver signature enforcement is now active\n";
+    
+    ConfigManager::ClearPatchStateFromRegistry();
+    
+    std::wcout << L"[6/6] Cleaning up - stopping and removing driver...\n";
     Cleanup();
     StopAndRemoveDriver();
-    return false;
-}
-
-auto restoredCallback = ReadMemory64(callbackAddress);
-if (!restoredCallback || *restoredCallback != *originalCallback) {
-    std::wcout << L"[-] Restoration verification failed - memory write unsuccessful\n";
-    Cleanup();
-    StopAndRemoveDriver();
-    return false;
-}
-
-std::wcout << L"[+] DSE restore completed successfully!\n";
-std::wcout << L"[+] CiValidateImageHeader has been restored to original address\n";
-std::wcout << L"[+] Driver signature enforcement is now active\n";
-
-ConfigManager::ClearPatchStateFromRegistry();
-
-std::wcout << L"[6/6] Cleaning up - stopping and removing driver...\n";
-Cleanup();
-StopAndRemoveDriver();
-
-std::wcout << L"[+] System cleanup completed - no driver instances running\n";
-
-return true;
+    
+    std::wcout << L"[+] System cleanup completed - no driver instances running\n";
+    
+    return true;
 }
