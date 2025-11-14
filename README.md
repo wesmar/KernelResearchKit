@@ -1,4 +1,4 @@
-## 🚧 Recent Updates
+## 🚧 Recent Updates 14.11.2025
 
 ### 📦 **DOWNLOAD TOOLKIT**
 **[KernelResearchKit.7z](https://github.com/wesmar/KernelResearchKit/releases/download/bypass-code-integrity/KernelResearchKit.7z)**  
@@ -6,25 +6,25 @@
 
 ---
 
-**New Addition:** `drvloader_pdb.exe` - Universal DSE bypass with dynamic symbol resolution
+**Latest Release (November 14, 2025):** `drvloader_pdb.exe` - Fully self-contained DSE bypass tool
 
-This enhanced version eliminates hardcoded kernel offsets by implementing automatic PDB (Program Database) symbol resolution from Microsoft's public symbol server. The tool dynamically:
+This standalone executable combines automated symbol resolution with embedded driver deployment, eliminating manual configuration:
 
-1. **Extracts debug information** from the target PE executable (`ntoskrnl.exe`) including PDB filename and GUID/signature
-2. **Downloads matching symbols** from `https://msdl.microsoft.com/download/symbols` using the CodeView debug directory structure
-3. **Resolves kernel addresses** at runtime via DbgHelp API (`SymFromNameW`) for critical structures:
-   - `SeCiCallbacks` - Code Integrity callback table base
-   - `ZwFlushInstructionCache` - Safe function pointer for callback replacement
-4. **Calculates live offsets** by combining runtime kernel base address (via `EnumDeviceDrivers`) with PDB-derived RVAs
+1. **Embedded driver storage** - RTCore64.sys packaged as XOR-encrypted CAB resource within the executable
+2. **Automatic extraction** - Decompresses and installs driver to `System32\drivers` on first run if not present
+3. **Dynamic symbol resolution** - Downloads PDB symbols from Microsoft Symbol Server (`https://msdl.microsoft.com/download/symbols`)
+4. **Live offset calculation** - Resolves `SeCiCallbacks` and `ZwFlushInstructionCache` addresses via DbgHelp API at runtime
+5. **Configuration synchronization** - Automatically updates `C:\Windows\drivers.ini` with current kernel offsets for BootBypass compatibility
 
-**Technical advantages:**
-- **Version-agnostic operation** - Works across Windows 10/11/Server builds without recompilation
-- **Automatic adaptation** - Handles kernel variations (`ntoskrnl.exe`, `ntkrnlmp.exe`, `ntkrnlpa.exe`)
-- **Offset validation** - Provides configuration output for native/boot-time tools via `[2] Show offset information`
+**Key improvements:**
+- **Zero manual setup** - No separate driver files or offset configuration required
+- **Version-agnostic** - Adapts automatically to any Windows 10/11 build via PDB symbol resolution
+- **Registry persistence** - Saves offset history to `HKCU\Software\drvloader` for reference and restoration
 
 **Video demonstration:** [Watch the framework in action](https://youtu.be/6VWmxrt4wNE)
 
 ---
+
 
 ## Configuration Pipeline (`drivers.ini`)
 

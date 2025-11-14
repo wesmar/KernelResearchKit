@@ -14,7 +14,7 @@ int main() {
     std::wcout << L"DSE Bypass Tool - Universal (Dynamic PDB Symbol Loading)\n";
     std::wcout << L"=========================================================\n";
     std::wcout << L"Technique: SeCiCallbacks CiValidateImageHeader replacement\n";
-    std::wcout << L"Vulnerable driver: RTCore64\n";
+    std::wcout << L"Vulnerable driver: RTCore64 (stored in binary resources)\n";
     std::wcout << L"Symbol resolution: Microsoft Symbol Server (automatic)\n";
 
     DrvLoader loader;
