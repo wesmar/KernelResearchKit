@@ -6,8 +6,9 @@
 
 ---
 
-**Latest Release (November 14, 2025):** `drvloader_pdb.exe` - Fully self-contained DSE bypass tool
+**Latest Release (November 14, 2025):** `drvloader.exe` - Fully self-contained DSE bypass tool
 
+The full guide will be updated once all features are finalized.
 This standalone executable combines automated symbol resolution with embedded driver deployment, eliminating manual configuration:
 
 1. **Embedded driver storage** - RTCore64.sys packaged as XOR-encrypted CAB resource within the executable
@@ -21,7 +22,7 @@ This standalone executable combines automated symbol resolution with embedded dr
 - **Version-agnostic** - Adapts automatically to any Windows 10/11 build via PDB symbol resolution
 - **Registry persistence** - Saves offset history to `HKCU\Software\drvloader` for reference and restoration
 
-**Video demonstration:** [Watch the framework in action](https://youtu.be/6VWmxrt4wNE)
+**Video demonstration (old):** [Watch the framework in action](https://youtu.be/6VWmxrt4wNE)
 
 ---
 
