@@ -1,5 +1,7 @@
 # KernelResearchKit - Windows DSE Bypass Framework
 
+![Demo](images/intro.gif)
+
 [![Platform](https://img.shields.io/badge/Platform-Windows%2010%2F11-blue)]()
 [![Architecture](https://img.shields.io/badge/Architecture-x64-green)]()
 [![Language](https://img.shields.io/badge/Language-C%2FC%2B%2B-orange)]()
