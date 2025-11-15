@@ -5,6 +5,9 @@
 #include <fstream>
 #include <sstream>
 #include <winreg.h>
+#include <shlobj.h>
+
+#pragma comment(lib, "shell32.lib")
 
 namespace ConfigManager {
 
@@ -398,4 +401,220 @@ bool CheckAndDisableMemoryIntegrity() {
     return true;
 }
 
+// ============================================================================
+// IN-MEMORY PDB PROCESSING - No temporary files!
+// ============================================================================
+
+// Mini-PDB structure (96 bytes)
+#pragma pack(push, 1)
+struct MiniPdb {
+    char Magic[8];              // "MINIPDB\0"
+    uint32_t Version;           // 1
+    uint32_t Reserved;
+    uint64_t SeCiCallbacks;
+    uint64_t ZwFlushInstructionCache;
+};
+#pragma pack(pop)
+
+std::wstring GetWindowsBuildNumber() {
+    WCHAR systemRoot[MAX_PATH];
+    GetSystemDirectoryW(systemRoot, MAX_PATH);
+    std::wstring ntoskrnlPath = std::wstring(systemRoot) + L"\\ntoskrnl.exe";
+    
+    DWORD verHandle = 0;
+    DWORD verSize = GetFileVersionInfoSizeW(ntoskrnlPath.c_str(), &verHandle);
+    if (verSize == 0) return L"Unknown";
+    
+    std::vector<BYTE> verData(verSize);
+    if (!GetFileVersionInfoW(ntoskrnlPath.c_str(), 0, verSize, verData.data())) {
+        return L"Unknown";
+    }
+    
+    VS_FIXEDFILEINFO* pFileInfo = nullptr;
+    UINT len = 0;
+    if (!VerQueryValueW(verData.data(), L"\\", (LPVOID*)&pFileInfo, &len)) {
+        return L"Unknown";
+    }
+    
+    wchar_t buildNumber[64];
+    swprintf_s(buildNumber, L"%d.%d.%d.%d",
+        HIWORD(pFileInfo->dwFileVersionMS),
+        LOWORD(pFileInfo->dwFileVersionMS),
+        HIWORD(pFileInfo->dwFileVersionLS),
+        LOWORD(pFileInfo->dwFileVersionLS));
+    
+    return buildNumber;
+}
+
+bool CreateMiniPdb(uint64_t seCiCallbacks, uint64_t safeFunction, const std::wstring& outputPath) {
+    std::wcout << L"[*] Creating mini-PDB file...\n";
+    
+    MiniPdb mpdb = {};
+    memcpy(mpdb.Magic, "MINIPDB", 8);
+    mpdb.Version = 1;
+    mpdb.SeCiCallbacks = seCiCallbacks;
+    mpdb.ZwFlushInstructionCache = safeFunction;
+    
+    // Create directory if needed
+    size_t lastSlash = outputPath.find_last_of(L"\\/");
+    if (lastSlash != std::wstring::npos) {
+        std::wstring dirPath = outputPath.substr(0, lastSlash);
+        SHCreateDirectoryExW(nullptr, dirPath.c_str(), nullptr);
+    }
+    
+    HANDLE hFile = CreateFileW(outputPath.c_str(), GENERIC_WRITE, 0, nullptr, 
+                               CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (hFile == INVALID_HANDLE_VALUE) {
+        std::wcout << L"[-] Failed to create mini-PDB file\n";
+        return false;
+    }
+    
+    DWORD written;
+    bool success = WriteFile(hFile, &mpdb, sizeof(mpdb), &written, nullptr);
+    CloseHandle(hFile);
+    
+    if (!success || written != sizeof(mpdb)) {
+        std::wcout << L"[-] Failed to write mini-PDB data\n";
+        return false;
+    }
+    
+    std::wcout << L"[+] Mini-PDB created: " << outputPath << L" (" << sizeof(mpdb) << L" bytes)\n";
+    return true;
+}
+
+bool LoadOffsetsFromMiniPdb(const std::wstring& mpdbPath, uint64_t* outSeCi, uint64_t* outSafe) {
+    HANDLE hFile = CreateFileW(mpdbPath.c_str(), GENERIC_READ, FILE_SHARE_READ, 
+                              nullptr, OPEN_EXISTING, 0, nullptr);
+    if (hFile == INVALID_HANDLE_VALUE) {
+        return false;
+    }
+    
+    MiniPdb mpdb;
+    DWORD read;
+    bool success = ReadFile(hFile, &mpdb, sizeof(mpdb), &read, nullptr);
+    CloseHandle(hFile);
+    
+    if (!success || read != sizeof(mpdb)) {
+        return false;
+    }
+    
+    // Verify magic and version
+    if (memcmp(mpdb.Magic, "MINIPDB", 8) != 0 || mpdb.Version != 1) {
+        std::wcout << L"[-] Invalid mini-PDB format\n";
+        return false;
+    }
+    
+    *outSeCi = mpdb.SeCiCallbacks;
+    *outSafe = mpdb.ZwFlushInstructionCache;
+    
+    std::wcout << L"[+] Loaded offsets from mini-PDB:\n";
+    std::wcout << L"    SeCiCallbacks: 0x" << std::hex << *outSeCi << std::dec << L"\n";
+    std::wcout << L"    SafeFunction: 0x" << std::hex << *outSafe << std::dec << L"\n";
+    
+    return true;
+}
+
+bool CreateWindowsMiniPdb(uint64_t seCiCallbacks, uint64_t safeFunction) {
+    std::wstring buildNumber = GetWindowsBuildNumber();
+    
+    // Use the same GUID structure as SymbolDownloader
+    std::wstring pdbGuid = L"D6477C2EE3391555525A83E53C7895EB1";
+    std::wstring mpdbPath = L"C:\\Windows\\symbols\\ntkrnlmp.pdb\\" + pdbGuid + L"\\ntkrnlmp.mpdb";
+    
+    std::wcout << L"[*] Creating Windows mini-PDB for build " << buildNumber << L"...\n";
+    
+    MiniPdb mpdb = {};
+    memcpy(mpdb.Magic, "MINIPDB", 8);
+    mpdb.Version = 1;
+    mpdb.SeCiCallbacks = seCiCallbacks;
+    mpdb.ZwFlushInstructionCache = safeFunction;
+    
+    // Create directory structure (C:\Windows\symbols\ntkrnlmp.pdb\GUID\)
+    std::wstring dirPath = L"C:\\Windows\\symbols\\ntkrnlmp.pdb\\" + pdbGuid;
+    SHCreateDirectoryExW(nullptr, dirPath.c_str(), nullptr);
+    
+    HANDLE hFile = CreateFileW(mpdbPath.c_str(), GENERIC_WRITE, 0, nullptr, 
+                               CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (hFile == INVALID_HANDLE_VALUE) {
+        DWORD error = GetLastError();
+        std::wcout << L"[-] Failed to create Windows mini-PDB (error: " << error << L")\n";
+        if (error == ERROR_ACCESS_DENIED) {
+            std::wcout << L"[-] Access denied - trying ProgramData fallback...\n";
+            
+            // Fallback to ProgramData
+            std::wstring fallbackPath = L"C:\\ProgramData\\dbg\\sym\\ntkrnlmp.pdb\\" + pdbGuid + L"\\ntkrnlmp.mpdb";
+            std::wstring fallbackDir = L"C:\\ProgramData\\dbg\\sym\\ntkrnlmp.pdb\\" + pdbGuid;
+            SHCreateDirectoryExW(nullptr, fallbackDir.c_str(), nullptr);
+            
+            hFile = CreateFileW(fallbackPath.c_str(), GENERIC_WRITE, 0, nullptr, 
+                               CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+            if (hFile == INVALID_HANDLE_VALUE) {
+                std::wcout << L"[-] Failed to create fallback mini-PDB\n";
+                return false;
+            }
+            mpdbPath = fallbackPath;
+        } else {
+            return false;
+        }
+    }
+    
+    DWORD written;
+    bool success = WriteFile(hFile, &mpdb, sizeof(mpdb), &written, nullptr);
+    CloseHandle(hFile);
+    
+    if (!success || written != sizeof(mpdb)) {
+        std::wcout << L"[-] Failed to write mini-PDB data\n";
+        return false;
+    }
+    
+    std::wcout << L"[+] Windows mini-PDB created: " << mpdbPath << L" (" << sizeof(mpdb) << L" bytes)\n";
+    std::wcout << L"    Build: " << buildNumber << L"\n";
+    std::wcout << L"    SeCiCallbacks: 0x" << std::hex << seCiCallbacks << std::dec << L"\n";
+    std::wcout << L"    SafeFunction: 0x" << std::hex << safeFunction << std::dec << L"\n";
+    
+    return true;
+}
+
+bool LoadOffsetsFromWindowsMiniPdb(uint64_t* outSeCi, uint64_t* outSafe) {
+    std::wstring pdbGuid = L"D6477C2EE3391555525A83E53C7895EB1";
+	// Try Windows directory first
+	std::wstring mpdbPath = L"C:\\Windows\\symbols\\ntkrnlmp.pdb\\" + pdbGuid + L"\\ntkrnlmp.mpdb";
+
+	HANDLE hFile = CreateFileW(mpdbPath.c_str(), GENERIC_READ, FILE_SHARE_READ, 
+							  nullptr, OPEN_EXISTING, 0, nullptr);
+
+	// Fallback to ProgramData
+	if (hFile == INVALID_HANDLE_VALUE) {
+		mpdbPath = L"C:\\ProgramData\\dbg\\sym\\ntkrnlmp.pdb\\" + pdbGuid + L"\\ntkrnlmp.mpdb";
+		hFile = CreateFileW(mpdbPath.c_str(), GENERIC_READ, FILE_SHARE_READ, 
+						   nullptr, OPEN_EXISTING, 0, nullptr);
+	}
+
+	if (hFile == INVALID_HANDLE_VALUE) {
+		return false;
+	}
+
+	MiniPdb mpdb;
+	DWORD read;
+	bool success = ReadFile(hFile, &mpdb, sizeof(mpdb), &read, nullptr);
+	CloseHandle(hFile);
+
+	if (!success || read != sizeof(mpdb)) {
+		return false;
+	}
+
+	// Verify magic and version
+	if (memcmp(mpdb.Magic, "MINIPDB", 8) != 0 || mpdb.Version != 1) {
+		return false;
+	}
+
+	*outSeCi = mpdb.SeCiCallbacks;
+	*outSafe = mpdb.ZwFlushInstructionCache;
+
+	std::wcout << L"[+] Loaded offsets from Windows mini-PDB: " << mpdbPath << L"\n";
+	std::wcout << L"    SeCiCallbacks: 0x" << std::hex << *outSeCi << std::dec << L"\n";
+	std::wcout << L"    SafeFunction: 0x" << std::hex << *outSafe << std::dec << L"\n";
+
+return true;
+}
 } // namespace ConfigManager

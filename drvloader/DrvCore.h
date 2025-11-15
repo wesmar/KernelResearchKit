@@ -34,6 +34,9 @@ public:
     HANDLE hDriver{ INVALID_HANDLE_VALUE };
     std::optional<uint64_t> originalCallback;
     SymbolDownloader symbolDownloader;
+
+    // Gets symbol offsets from PDB or cache
+    bool GetSymbolOffsets(uint64_t* seCiCallbacks, uint64_t* safeFunction);
     
     // Initializes symbol downloader and loads registry state
     bool Initialize();
@@ -77,4 +80,7 @@ private:
     
     // Verifies RTCore64.sys exists in System32\drivers
     bool CheckDriverFileExists();
+    
+    // Try to load offsets from existing mini-PDB first (avoid symbol download)
+    bool TryLoadOffsetsFromCache(uint64_t* seCiCallbacks, uint64_t* safeFunction);
 };

@@ -7,6 +7,7 @@
 #include <optional>
 #include <string>
 #include <vector>
+#include <utility>
 
 #pragma comment(lib, "dbghelp.lib")
 #pragma comment(lib, "winhttp.lib")
@@ -25,9 +26,6 @@ private:
     
     // Downloads PDB file from symbol server
     bool DownloadPdb(const std::wstring& modulePath);
-    
-    // Extracts PDB GUID/signature from PE file
-    std::wstring GetPdbGuidFromPe(const std::wstring& pePath);
     
     // Downloads file from URL to local path
     bool DownloadFile(const std::wstring& url, const std::wstring& outputPath);

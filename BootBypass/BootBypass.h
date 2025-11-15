@@ -34,6 +34,9 @@
 #define FILE_OVERWRITE 0x00000004
 #define FILE_CREATE 0x00000002
 #define FILE_ATTRIBUTE_NORMAL 0x00000080
+#define FILE_READ_ATTRIBUTES 0x00000080
+#define FILE_LIST_DIRECTORY 0x00000001
+#define FILE_DIRECTORY_FILE 0x00000001
 #define KEY_READ 0x00020019
 #define KEY_WRITE 0x00020006
 #define KEY_ALL_ACCESS 0x000F003F
@@ -74,8 +77,8 @@ typedef ULONG* PULONG;
 typedef enum _ACTION_TYPE {
     ACTION_LOAD = 0,
     ACTION_UNLOAD = 1,
-    ACTION_RENAME = 2
-    // Note: ACTION_PATCH_DSE and ACTION_UNPATCH_DSE removed - integrated into AutoPatch
+    ACTION_RENAME = 2,
+	ACTION_DELETE = 3
 } ACTION_TYPE;
 
 typedef struct _UNICODE_STRING {
@@ -108,6 +111,10 @@ typedef union _LARGE_INTEGER {
     };
     ULONGLONG QuadPart;
 } LARGE_INTEGER, *PLARGE_INTEGER;
+
+typedef struct _FILE_DISPOSITION_INFORMATION {
+    BOOLEAN DeleteFile;
+} FILE_DISPOSITION_INFORMATION, *PFILE_DISPOSITION_INFORMATION;
 
 typedef struct _FILE_RENAME_INFORMATION {
     BOOLEAN ReplaceIfExists;
@@ -156,7 +163,8 @@ typedef struct _RTC_PACKET {
 
 // Global configuration structure
 typedef struct _CONFIG_SETTINGS {
-    BOOLEAN RestoreHVCI;
+    BOOLEAN Execute;
+	BOOLEAN RestoreHVCI;
     WCHAR DriverDevice[MAX_PATH_LEN];
     ULONG IoControlCode_Read;
     ULONG IoControlCode_Write;
@@ -181,6 +189,10 @@ typedef struct _INI_ENTRY {
     WCHAR SourcePath[MAX_PATH_LEN];
     WCHAR TargetPath[MAX_PATH_LEN];
     BOOLEAN ReplaceIfExists;
+	
+    // For DELETE actions
+    WCHAR DeletePath[MAX_PATH_LEN];
+    BOOLEAN RecursiveDelete;
     
 } INI_ENTRY, *PINI_ENTRY;
 
@@ -205,6 +217,7 @@ __declspec(dllimport) NTSTATUS NTAPI NtUnloadDriver(PUNICODE_STRING DriverServic
 __declspec(dllimport) NTSTATUS NTAPI NtLoadDriver(PUNICODE_STRING DriverServiceName);
 __declspec(dllimport) NTSTATUS NTAPI NtDisplayString(PUNICODE_STRING String);
 __declspec(dllimport) NTSTATUS NTAPI NtTerminateProcess(HANDLE ProcessHandle, NTSTATUS ExitStatus);
+__declspec(dllimport) NTSTATUS NTAPI NtQueryDirectoryFile(HANDLE FileHandle, HANDLE Event, PVOID ApcRoutine, PVOID ApcContext, PIO_STATUS_BLOCK IoStatusBlock, PVOID FileInformation, ULONG Length, ULONG FileInformationClass, BOOLEAN ReturnSingleEntry, PUNICODE_STRING FileName, BOOLEAN RestartScan);
 __declspec(dllimport) NTSTATUS NTAPI NtOpenFile(PHANDLE FileHandle, ULONG DesiredAccess, POBJECT_ATTRIBUTES ObjectAttributes, PIO_STATUS_BLOCK IoStatusBlock, ULONG ShareAccess, ULONG OpenOptions);
 __declspec(dllimport) NTSTATUS NTAPI NtCreateFile(PHANDLE FileHandle, ULONG DesiredAccess, POBJECT_ATTRIBUTES ObjectAttributes, PIO_STATUS_BLOCK IoStatusBlock, PLARGE_INTEGER AllocationSize, ULONG FileAttributes, ULONG ShareAccess, ULONG CreateDisposition, ULONG CreateOptions, PVOID EaBuffer, ULONG EaLength);
 __declspec(dllimport) NTSTATUS NTAPI NtReadFile(HANDLE FileHandle, HANDLE Event, PVOID ApcRoutine, PVOID ApcContext, PIO_STATUS_BLOCK IoStatusBlock, PVOID Buffer, ULONG Length, PLARGE_INTEGER ByteOffset, PULONG Key);
@@ -227,9 +240,12 @@ BOOLEAN SaveStateSection(ULONGLONG callback);
 NTSTATUS AddThemesDependency(void);
 NTSTATUS RemoveThemesDependency(void); 
 NTSTATUS RestoreHVCI(void);
+
+// Delete file/directory operations
+NTSTATUS ExecuteDelete(PINI_ENTRY entry);
 ULONG ParseIniFile(PWSTR iniContent, PINI_ENTRY entries, ULONG maxEntries, PCONFIG_SETTINGS config);
 
-// New function for AutoPatch functionality
+// Function for AutoPatch functionality
 NTSTATUS ExecuteAutoPatchLoad(PINI_ENTRY entry, PCONFIG_SETTINGS config);
 
 #endif

@@ -34,72 +34,81 @@ void WaitForAnyKey(const std::wstring& message) {
     std::wcout << L"\n";
 }
 
-void DisplayOffsetInfo(DrvLoader& loader) {
+void UI::DisplayOffsetInfo(DrvLoader& loader) {
     std::wcout << L"\n";
     std::wcout << L"=========================================================\n";
     std::wcout << L"          OFFSET INFORMATION FOR EXTERNAL TOOLS\n";
     std::wcout << L"=========================================================\n";
     std::wcout << L"\n";
-    std::wcout << L"If you are using native/system level tools (e.g., BootBypass)\n";
-    std::wcout << L"that require manual offset configuration in drivers.ini,\n";
-    std::wcout << L"use the following values for your current Windows build:\n";
-    std::wcout << L"\n";
+    
+	// USE THE NEW METHOD - NO DRIVER NEEDED!
+	uint64_t seCiCallbacks, safeFunction;
+	if (!loader.GetSymbolOffsets(&seCiCallbacks, &safeFunction)) {
+		std::wcout << L"[-] Failed to get symbol offsets\n";
+		WaitForAnyKey(L"\nPress any key to return to menu...");
+		return;
+	}
+    
+    // Load the offsets to display them
+    uint64_t seCiCallbacksOffset, safeFunctionOffset;
+    if (!ConfigManager::LoadOffsetsFromWindowsMiniPdb(&seCiCallbacksOffset, &safeFunctionOffset)) {
+        std::wcout << L"[-] Failed to load offsets\n";
+        WaitForAnyKey(L"\nPress any key to return to menu...");
+        return;
+    }
+    
+    std::wcout << L"[Config] section in drivers.ini:\n";
+    std::wcout << L"....................................\n";
+    
+    std::wcout << L"Offset_SeCiCallbacks=0x" << std::hex << std::uppercase << seCiCallbacksOffset << std::dec << L"\n";
+    std::wcout << L"Offset_Callback=0x20\n";
+    std::wcout << L"Offset_SafeFunction=0x" << std::hex << std::uppercase << safeFunctionOffset << std::dec << L"\n";
+    
+    std::wcout << L"....................................\n\n";
+    
+    // Save to drivers.ini and registry
+    bool driversIniUpdated = ConfigManager::UpdateDriversIni(seCiCallbacksOffset, safeFunctionOffset);
     
     WCHAR systemRoot[MAX_PATH];
     GetSystemDirectoryW(systemRoot, MAX_PATH);
     std::wstring ntoskrnlPath = std::wstring(systemRoot) + L"\\ntoskrnl.exe";
     
-    auto seCiCallbacksOffset = loader.symbolDownloader.GetSymbolOffset(ntoskrnlPath, L"SeCiCallbacks");
-    auto zwFlushOffset = loader.symbolDownloader.GetSymbolOffset(ntoskrnlPath, L"ZwFlushInstructionCache");
+    DWORD verHandle = 0;
+    DWORD verSize = GetFileVersionInfoSizeW(ntoskrnlPath.c_str(), &verHandle);
+    std::wstring buildInfo = L"Unknown";
     
-    if (seCiCallbacksOffset && zwFlushOffset) {
-        std::wcout << L"[Config] section in drivers.ini:\n";
-        std::wcout << L"....................................\n";
-        
-        std::wcout << L"Offset_SeCiCallbacks=0x" << std::hex << std::uppercase << *seCiCallbacksOffset << std::dec << L"\n";
-        std::wcout << L"Offset_Callback=0x20\n";
-        std::wcout << L"Offset_SafeFunction=0x" << std::hex << std::uppercase << *zwFlushOffset << std::dec << L"\n";
-        
-        std::wcout << L"....................................\n\n";
-        
-        bool driversIniUpdated = ConfigManager::UpdateDriversIni(*seCiCallbacksOffset, *zwFlushOffset);
-        
-        DWORD verHandle = 0;
-        DWORD verSize = GetFileVersionInfoSizeW(ntoskrnlPath.c_str(), &verHandle);
-        std::wstring buildInfo = L"Unknown";
-        
-        if (verSize > 0) {
-            std::vector<BYTE> verData(verSize);
-            if (GetFileVersionInfoW(ntoskrnlPath.c_str(), 0, verSize, verData.data())) {
-                VS_FIXEDFILEINFO* pFileInfo = nullptr;
-                UINT len = 0;
-                if (VerQueryValueW(verData.data(), L"\\", (LPVOID*)&pFileInfo, &len)) {
-                    wchar_t ver[64];
-                    swprintf_s(ver, L"%d.%d.%d.%d",
-                        HIWORD(pFileInfo->dwFileVersionMS),
-                        LOWORD(pFileInfo->dwFileVersionMS),
-                        HIWORD(pFileInfo->dwFileVersionLS),
-                        LOWORD(pFileInfo->dwFileVersionLS));
-                    buildInfo = ver;
-                }
+    if (verSize > 0) {
+        std::vector<BYTE> verData(verSize);
+        if (GetFileVersionInfoW(ntoskrnlPath.c_str(), 0, verSize, verData.data())) {
+            VS_FIXEDFILEINFO* pFileInfo = nullptr;
+            UINT len = 0;
+            if (VerQueryValueW(verData.data(), L"\\", (LPVOID*)&pFileInfo, &len)) {
+                wchar_t ver[64];
+                swprintf_s(ver, L"%d.%d.%d.%d",
+                    HIWORD(pFileInfo->dwFileVersionMS),
+                    LOWORD(pFileInfo->dwFileVersionMS),
+                    HIWORD(pFileInfo->dwFileVersionLS),
+                    LOWORD(pFileInfo->dwFileVersionLS));
+                buildInfo = ver;
             }
         }
-        
-        bool registrySaved = ConfigManager::SaveOffsetsToRegistry(*seCiCallbacksOffset, *zwFlushOffset, buildInfo);
-        
-        std::wcout << L"\n[*] Save status:\n";
-        if (driversIniUpdated) {
-            std::wcout << L"    [+] Saved to C:\\Windows\\drivers.ini\n";
-        } else {
-            std::wcout << L"    [-] drivers.ini not found\n";
-        }
-        
-        if (registrySaved) {
-            std::wcout << L"    [+] Saved to HKCU\\Software\\drvloader\n";
-        }
-    } else {
-        std::wcout << L"[-] Failed to retrieve offsets. Ensure symbols are downloaded.\n";
     }
+    
+    bool registrySaved = ConfigManager::SaveOffsetsToRegistry(seCiCallbacksOffset, safeFunctionOffset, buildInfo);
+    
+    std::wcout << L"\n[*] Save status:\n";
+    if (driversIniUpdated) {
+        std::wcout << L"    [+] Saved to C:\\Windows\\drivers.ini\n";
+    } else {
+        std::wcout << L"    [-] drivers.ini not found\n";
+    }
+    
+    if (registrySaved) {
+        std::wcout << L"    [+] Saved to HKCU\\Software\\drvloader\n";
+    }
+    
+    std::wcout << L"    [+] Saved to C:\\Windows\\symbols\\ntkrnlmp.pdb\\{GUID}\\ntkrnlmp.mpdb\n";
+    std::wcout << L"    [!] BootBypass will auto-detect this file\n";
     
     std::wcout << L"\n";
     std::wcout << L"Note: These offsets are specific to your current ntoskrnl.exe build.\n";
@@ -120,7 +129,7 @@ void DisplayMenu(bool isPatched) {
         std::wcout << L"[1] Patch DSE (disable driver signature enforcement)\n";
     }
     
-    std::wcout << L"[2] Show offset information for external tools\n";
+    std::wcout << L"[2] Show and save offset information for external tools\n";
     std::wcout << L"[3] Exit\n";
     std::wcout << L"=========================================================\n";
     std::wcout << L"\nSelect option: ";

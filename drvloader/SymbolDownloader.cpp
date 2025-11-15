@@ -126,71 +126,6 @@ std::pair<std::wstring, std::wstring> SymbolDownloader::GetPdbInfoFromPe(const s
     return {pdbName, guidStr};
 }
 
-std::wstring SymbolDownloader::GetPdbGuidFromPe(const std::wstring& pePath) {
-    HANDLE hFile = CreateFileW(pePath.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, 0, nullptr);
-    if (hFile == INVALID_HANDLE_VALUE) {
-        return L"";
-    }
-    
-    HANDLE hMapping = CreateFileMappingW(hFile, nullptr, PAGE_READONLY, 0, 0, nullptr);
-    if (!hMapping) {
-        CloseHandle(hFile);
-        return L"";
-    }
-    
-    LPVOID pBase = MapViewOfFile(hMapping, FILE_MAP_READ, 0, 0, 0);
-    if (!pBase) {
-        CloseHandle(hMapping);
-        CloseHandle(hFile);
-        return L"";
-    }
-    
-    std::wstring guidStr;
-    
-    PIMAGE_DOS_HEADER pDos = (PIMAGE_DOS_HEADER)pBase;
-    if (pDos->e_magic == IMAGE_DOS_SIGNATURE) {
-        PIMAGE_NT_HEADERS pNt = (PIMAGE_NT_HEADERS)((BYTE*)pBase + pDos->e_lfanew);
-        if (pNt->Signature == IMAGE_NT_SIGNATURE) {
-            DWORD debugDirRva = pNt->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_DEBUG].VirtualAddress;
-            DWORD debugDirSize = pNt->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_DEBUG].Size;
-            
-            if (debugDirRva && debugDirSize) {
-                PIMAGE_DEBUG_DIRECTORY pDebugDir = (PIMAGE_DEBUG_DIRECTORY)((BYTE*)pBase + debugDirRva);
-                
-                for (DWORD i = 0; i < debugDirSize / sizeof(IMAGE_DEBUG_DIRECTORY); i++) {
-                    if (pDebugDir[i].Type == IMAGE_DEBUG_TYPE_CODEVIEW) {
-                        struct CV_INFO_PDB70 {
-                            DWORD CvSignature;
-                            GUID Signature;
-                            DWORD Age;
-                            char PdbFileName[1];
-                        };
-                        
-                        CV_INFO_PDB70* pCv = (CV_INFO_PDB70*)((BYTE*)pBase + pDebugDir[i].AddressOfRawData);
-                        
-                        if (pCv->CvSignature == 0x53445352) {
-                            wchar_t guidBuf[64];
-                            swprintf_s(guidBuf, L"%08X%04X%04X%02X%02X%02X%02X%02X%02X%02X%02X%X",
-                                pCv->Signature.Data1, pCv->Signature.Data2, pCv->Signature.Data3,
-                                pCv->Signature.Data4[0], pCv->Signature.Data4[1], pCv->Signature.Data4[2],
-                                pCv->Signature.Data4[3], pCv->Signature.Data4[4], pCv->Signature.Data4[5],
-                                pCv->Signature.Data4[6], pCv->Signature.Data4[7], pCv->Age);
-                            guidStr = guidBuf;
-                            break;
-                        }
-                    }
-                }
-            }
-        }
-    }
-    
-    UnmapViewOfFile(pBase);
-    CloseHandle(hMapping);
-    CloseHandle(hFile);
-    
-    return guidStr;
-}
-
 bool SymbolDownloader::DownloadFile(const std::wstring& url, const std::wstring& outputPath) {
     std::wcout << L"[*] Downloading from: " << url << L"\n";
     
@@ -306,18 +241,23 @@ bool SymbolDownloader::DownloadPdb(const std::wstring& modulePath) {
     std::wcout << L"[+] PDB Name: " << pdbName << L"\n";
     std::wcout << L"[+] PDB GUID: " << guid << L"\n";
     
+    // Construct download URL using extracted PDB information
     std::wstring url = symbolServer + L"/" + pdbName + L"/" + guid + L"/" + pdbName;
     
+    // Construct local cache path using the same structure
     std::wstring localDir = symbolCachePath + L"\\" + pdbName + L"\\" + guid;
     std::wstring localPath = localDir + L"\\" + pdbName;
     
+    // Check if PDB already exists in cache
     if (GetFileAttributesW(localPath.c_str()) != INVALID_FILE_ATTRIBUTES) {
         std::wcout << L"[+] PDB already exists in cache: " << localPath << L"\n";
         return true;
     }
     
+    // Create directory structure for cache
     SHCreateDirectoryExW(nullptr, localDir.c_str(), nullptr);
     
+    // Download the PDB file
     if (!DownloadFile(url, localPath)) {
         std::wcout << L"[-] Failed to download PDB file\n";
         return false;

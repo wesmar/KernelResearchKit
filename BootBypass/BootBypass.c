@@ -53,6 +53,24 @@ int _wcsicmp_impl(const WCHAR* str1, const WCHAR* str2) {
     return 0;
 }
 
+// Directory enumeration structures for recursive delete
+typedef struct _FILE_DIRECTORY_INFORMATION {
+    ULONG NextEntryOffset;
+    ULONG FileIndex;
+    LARGE_INTEGER CreationTime;
+    LARGE_INTEGER LastAccessTime;
+    LARGE_INTEGER LastWriteTime;
+    LARGE_INTEGER ChangeTime;
+    LARGE_INTEGER EndOfFile;
+    LARGE_INTEGER AllocationSize;
+    ULONG FileAttributes;
+    ULONG FileNameLength;
+    WCHAR FileName[1];
+} FILE_DIRECTORY_INFORMATION, *PFILE_DIRECTORY_INFORMATION;
+
+#define FileDirectoryInformation 1
+#define FILE_ATTRIBUTE_DIRECTORY 0x00000010
+
 // Remove leading/trailing whitespace from string
 void TrimString(PWSTR str) {
     PWSTR start = str, end;
@@ -1245,6 +1263,198 @@ NTSTATUS ExecuteRename(PINI_ENTRY entry) {
 }
 
 // ============================================================================
+// FILE DELETE OPERATIONS - Privileged file and directory deletion
+// ============================================================================
+
+// Helper: Check if entry is "." or ".."
+BOOLEAN IsDotDirectory(PWSTR name, ULONG nameLen) {
+    if (nameLen == sizeof(WCHAR) && name[0] == L'.')
+        return TRUE;
+    if (nameLen == 2 * sizeof(WCHAR) && name[0] == L'.' && name[1] == L'.')
+        return TRUE;
+    return FALSE;
+}
+
+// Helper: Recursively delete directory contents
+NTSTATUS DeleteDirectoryRecursive(PUNICODE_STRING dirPath) {
+    OBJECT_ATTRIBUTES oa;
+    IO_STATUS_BLOCK iosb;
+    HANDLE hDir;
+    NTSTATUS status;
+    UCHAR buffer[4096];
+    PFILE_DIRECTORY_INFORMATION dirInfo;
+    BOOLEAN firstQuery = TRUE;
+
+    InitializeObjectAttributes(&oa, dirPath, OBJ_CASE_INSENSITIVE | OBJ_KERNEL_HANDLE, NULL, NULL);
+
+    status = NtOpenFile(&hDir, FILE_LIST_DIRECTORY | DELETE | SYNCHRONIZE, &oa, &iosb,
+                       FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                       FILE_DIRECTORY_FILE | FILE_SYNCHRONOUS_IO_NONALERT | FILE_OPEN_FOR_BACKUP_INTENT);
+
+    if (!NT_SUCCESS(status)) {
+        return status;
+    }
+
+    // Enumerate all entries in directory
+    while (TRUE) {
+        memset_impl(buffer, 0, sizeof(buffer));
+        
+        status = NtQueryDirectoryFile(hDir, NULL, NULL, NULL, &iosb,
+                                     buffer, sizeof(buffer),
+                                     FileDirectoryInformation,
+                                     FALSE, NULL, firstQuery);
+
+        if (status == 0x80000006 || !NT_SUCCESS(status)) { // STATUS_NO_MORE_FILES
+            break;
+        }
+
+        firstQuery = FALSE;
+        dirInfo = (PFILE_DIRECTORY_INFORMATION)buffer;
+
+        while (TRUE) {
+            if (!IsDotDirectory(dirInfo->FileName, dirInfo->FileNameLength)) {
+                WCHAR fullPath[MAX_PATH_LEN];
+                UNICODE_STRING usFullPath;
+                ULONG i;
+
+                // Build full path: dirPath + "\" + fileName
+                wcscpy(fullPath, dirPath->Buffer);
+                wcscat(fullPath, L"\\");
+                
+                ULONG fileNameChars = (ULONG)(dirInfo->FileNameLength / sizeof(WCHAR));
+                ULONG currentLen = (ULONG)wcslen(fullPath);
+                for (i = 0; i < fileNameChars && (currentLen + i) < (MAX_PATH_LEN - 1); i++) {
+                    fullPath[currentLen + i] = dirInfo->FileName[i];
+                }
+                fullPath[currentLen + i] = 0;
+
+                RtlInitUnicodeString(&usFullPath, fullPath);
+
+                // If it's a directory, recurse
+                if (dirInfo->FileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
+                    DeleteDirectoryRecursive(&usFullPath);
+                }
+
+                // Delete file/empty directory
+                OBJECT_ATTRIBUTES oaItem;
+                HANDLE hItem;
+                InitializeObjectAttributes(&oaItem, &usFullPath, OBJ_CASE_INSENSITIVE | OBJ_KERNEL_HANDLE, NULL, NULL);
+
+                status = NtOpenFile(&hItem, DELETE | SYNCHRONIZE, &oaItem, &iosb,
+                                   FILE_SHARE_DELETE,
+                                   FILE_OPEN_FOR_BACKUP_INTENT | FILE_SYNCHRONOUS_IO_NONALERT);
+
+                if (NT_SUCCESS(status)) {
+                    FILE_DISPOSITION_INFORMATION dispInfo;
+                    dispInfo.DeleteFile = TRUE;
+                    NtSetInformationFile(hItem, &iosb, &dispInfo, sizeof(dispInfo), 13); // FileDispositionInformation
+                    NtClose(hItem);
+                }
+            }
+
+            if (dirInfo->NextEntryOffset == 0)
+                break;
+
+            dirInfo = (PFILE_DIRECTORY_INFORMATION)((UCHAR*)dirInfo + dirInfo->NextEntryOffset);
+        }
+    }
+
+    NtClose(hDir);
+
+    // Now delete the directory itself
+    InitializeObjectAttributes(&oa, dirPath, OBJ_CASE_INSENSITIVE | OBJ_KERNEL_HANDLE, NULL, NULL);
+    status = NtOpenFile(&hDir, DELETE | SYNCHRONIZE, &oa, &iosb,
+                       FILE_SHARE_DELETE,
+                       FILE_DIRECTORY_FILE | FILE_OPEN_FOR_BACKUP_INTENT | FILE_SYNCHRONOUS_IO_NONALERT);
+
+    if (NT_SUCCESS(status)) {
+        FILE_DISPOSITION_INFORMATION dispInfo;
+        dispInfo.DeleteFile = TRUE;
+        NtSetInformationFile(hDir, &iosb, &dispInfo, sizeof(dispInfo), 13);
+        NtClose(hDir);
+    }
+
+    return STATUS_SUCCESS;
+}
+
+// Main delete function
+NTSTATUS ExecuteDelete(PINI_ENTRY entry) {
+    UNICODE_STRING usPath;
+    OBJECT_ATTRIBUTES oa;
+    IO_STATUS_BLOCK iosb;
+    HANDLE hFile;
+    NTSTATUS status;
+    FILE_DISPOSITION_INFORMATION dispInfo;
+
+    RtlInitUnicodeString(&usPath, entry->DeletePath);
+
+    // Try to open as file/directory
+    InitializeObjectAttributes(&oa, &usPath, OBJ_CASE_INSENSITIVE | OBJ_KERNEL_HANDLE, NULL, NULL);
+
+    status = NtOpenFile(&hFile, DELETE | FILE_READ_ATTRIBUTES | SYNCHRONIZE, &oa, &iosb,
+                       FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                       FILE_OPEN_FOR_BACKUP_INTENT | FILE_SYNCHRONOUS_IO_NONALERT);
+
+    if (!NT_SUCCESS(status)) {
+        DisplayMessage(L"FAILED: Cannot open file/directory for deletion\r\n");
+        DisplayStatus(status);
+        return status;
+    }
+
+    // Check if it's a directory
+    FILE_STANDARD_INFORMATION fileInfo;
+    memset_impl(&fileInfo, 0, sizeof(fileInfo));
+    status = NtQueryInformationFile(hFile, &iosb, &fileInfo, sizeof(fileInfo), FileStandardInformation);
+
+    if (NT_SUCCESS(status) && fileInfo.Directory) {
+        NtClose(hFile);
+
+        if (entry->RecursiveDelete) {
+            DisplayMessage(L"INFO: Recursively deleting directory...\r\n");
+            status = DeleteDirectoryRecursive(&usPath);
+            if (NT_SUCCESS(status)) {
+                DisplayMessage(L"SUCCESS: Directory and contents deleted\r\n");
+            } else {
+                DisplayMessage(L"FAILED: Recursive delete failed\r\n");
+                DisplayStatus(status);
+            }
+        } else {
+            // Try to delete empty directory
+            status = NtOpenFile(&hFile, DELETE | SYNCHRONIZE, &oa, &iosb,
+                               FILE_SHARE_DELETE,
+                               FILE_DIRECTORY_FILE | FILE_OPEN_FOR_BACKUP_INTENT | FILE_SYNCHRONOUS_IO_NONALERT);
+
+            if (NT_SUCCESS(status)) {
+                dispInfo.DeleteFile = TRUE;
+                status = NtSetInformationFile(hFile, &iosb, &dispInfo, sizeof(dispInfo), 13);
+                NtClose(hFile);
+
+                if (NT_SUCCESS(status)) {
+                    DisplayMessage(L"SUCCESS: Empty directory deleted\r\n");
+                } else {
+                    DisplayMessage(L"FAILED: Directory not empty or delete failed\r\n");
+                    DisplayStatus(status);
+                }
+            }
+        }
+    } else {
+        // It's a file - simple delete
+        dispInfo.DeleteFile = TRUE;
+        status = NtSetInformationFile(hFile, &iosb, &dispInfo, sizeof(dispInfo), 13);
+        NtClose(hFile);
+
+        if (NT_SUCCESS(status)) {
+            DisplayMessage(L"SUCCESS: File deleted\r\n");
+        } else {
+            DisplayMessage(L"FAILED: File delete failed\r\n");
+            DisplayStatus(status);
+        }
+    }
+
+    return status;
+}
+
+// ============================================================================
 // INI PARSER - Updated with AutoPatch support
 // ============================================================================
 
@@ -1257,6 +1467,7 @@ ULONG ParseIniFile(PWSTR iniContent, PINI_ENTRY entries, ULONG maxEntries, PCONF
     BOOLEAN inConfigSection = FALSE;
 
 	// Initialize config with defaults
+    config->Execute = TRUE;
     config->RestoreHVCI = TRUE;
     config->DriverDevice[0] = 0;
     config->IoControlCode_Read = 0;
@@ -1343,8 +1554,12 @@ ULONG ParseIniFile(PWSTR iniContent, PINI_ENTRY entries, ULONG maxEntries, PCONF
                 PWSTR key = lineBuf, value = equals + 1;
                 TrimString(key);
                 TrimString(value);
-
-				if (_wcsicmp_impl(key, L"RestoreHVCI") == 0) {
+                if (_wcsicmp_impl(key, L"Execute") == 0) {
+                    config->Execute = (_wcsicmp_impl(value, L"YES") == 0 ||
+                                      _wcsicmp_impl(value, L"TRUE") == 0 ||
+                                      _wcsicmp_impl(value, L"ON") == 0 ||
+                                      _wcsicmp_impl(value, L"1") == 0); 
+				} else if (_wcsicmp_impl(key, L"RestoreHVCI") == 0) {
                     config->RestoreHVCI = (_wcsicmp_impl(value, L"YES") == 0 ||
                                           _wcsicmp_impl(value, L"TRUE") == 0 ||
                                           _wcsicmp_impl(value, L"1") == 0);
@@ -1384,7 +1599,9 @@ ULONG ParseIniFile(PWSTR iniContent, PINI_ENTRY entries, ULONG maxEntries, PCONF
                         entries[currentEntry].Action = ACTION_UNLOAD;
                     } else if (_wcsicmp_impl(value, L"RENAME") == 0) {
                         entries[currentEntry].Action = ACTION_RENAME;
-                    }
+					} else if (_wcsicmp_impl(value, L"DELETE") == 0) {
+					entries[currentEntry].Action = ACTION_DELETE;
+					}
                 } else if (_wcsicmp_impl(key, L"ServiceName") == 0) {
                     wcscpy(entries[currentEntry].ServiceName, value);
                 } else if (_wcsicmp_impl(key, L"DisplayName") == 0) {
@@ -1406,6 +1623,11 @@ ULONG ParseIniFile(PWSTR iniContent, PINI_ENTRY entries, ULONG maxEntries, PCONF
                 } else if (_wcsicmp_impl(key, L"ReplaceIfExists") == 0) {
                     entries[currentEntry].ReplaceIfExists = (_wcsicmp_impl(value, L"YES") == 0 || _wcsicmp_impl(value, L"TRUE") == 0);
                 }
+				else if (_wcsicmp_impl(key, L"DeletePath") == 0) {
+					wcscpy(entries[currentEntry].DeletePath, value);
+				} else if (_wcsicmp_impl(key, L"RecursiveDelete") == 0) {
+					entries[currentEntry].RecursiveDelete = (_wcsicmp_impl(value, L"YES") == 0 || _wcsicmp_impl(value, L"TRUE") == 0);
+				}
             }
         }
     }
@@ -1423,7 +1645,6 @@ ULONG ParseIniFile(PWSTR iniContent, PINI_ENTRY entries, ULONG maxEntries, PCONF
 // ============================================================================
 // MAIN ENTRY POINT - Native application startup and orchestration
 // ============================================================================
-
 __declspec(noreturn) void __stdcall NtProcessStartup(void* Peb) {
     INI_ENTRY entries[MAX_ENTRIES];
     CONFIG_SETTINGS config;
@@ -1435,21 +1656,13 @@ __declspec(noreturn) void __stdcall NtProcessStartup(void* Peb) {
 
     // Elevate process privileges for driver/registry operations
     RtlAdjustPrivilege(SE_LOAD_DRIVER_PRIVILEGE, TRUE, FALSE, &bOld);
-    // Elevate process privileges for driver/registry operations
     RtlAdjustPrivilege(SE_BACKUP_PRIVILEGE, TRUE, FALSE, &bOld);
-    // Elevate process privileges for driver/registry operations
     RtlAdjustPrivilege(SE_RESTORE_PRIVILEGE, TRUE, FALSE, &bOld);
 
     DisplayMessage(L"BootBypass - Driver/Patch/Rename Manager\r\n");
     DisplayMessage(L"====================================\r\n");
 
-    // Cleanup after reboot - remove Themes dependency and RebootGuardian service
-    RemoveThemesDependency();
-    RemoveRebootGuardianService();
-
-    // Check HVCI status and schedule reboot if needed
-    skipPatch = CheckAndDisableHVCI();
-
+    // Read INI first to check Execute flag
     if (!ReadIniFile(L"\\??\\C:\\Windows\\drivers.ini", &iniContent)) {
         DisplayMessage(L"ERROR: Cannot read drivers.ini\r\n");
         NtTerminateProcess((HANDLE)-1, STATUS_SUCCESS);
@@ -1457,19 +1670,36 @@ __declspec(noreturn) void __stdcall NtProcessStartup(void* Peb) {
 
     entryCount = ParseIniFile(iniContent, entries, MAX_ENTRIES, &config);
 
+    // Check if execution is disabled - BEFORE any operations
+    if (!config.Execute) {
+        DisplayMessage(L"\r\n====================================\r\n");
+        DisplayMessage(L"EXECUTION DISABLED (Execute=NO)\r\n");
+        DisplayMessage(L"All operations skipped - exiting.\r\n");
+        DisplayMessage(L"====================================\r\n");
+        NtTerminateProcess((HANDLE)-1, STATUS_SUCCESS);
+    }
+
     if (entryCount == 0) {
         DisplayMessage(L"ERROR: No valid entries found in INI\r\n");
         NtTerminateProcess((HANDLE)-1, STATUS_SUCCESS);
     }
 
+    // NOW do cleanup and HVCI check - only if Execute=YES
+    RemoveThemesDependency();
+    RemoveRebootGuardianService();
+
+    // Check HVCI status and schedule reboot if needed
+    skipPatch = CheckAndDisableHVCI();
+
     // Display config status
-    DisplayMessage(L"CONFIG: RestoreHVCI=");
+    DisplayMessage(L"CONFIG: Execute=YES, RestoreHVCI=");
     DisplayMessage(config.RestoreHVCI ? L"YES\r\n" : L"NO\r\n");
 
     if (g_OriginalCallback == 0) {
         LoadStateSection(&g_OriginalCallback);
     }
 
+    // Process all INI entries in sequential order
     // Process all INI entries in sequential order
     for (i = 0; i < entryCount; i++) {
         if (entries[i].ServiceName[0] == 0 && entries[i].DisplayName[0] == 0) {
@@ -1534,9 +1764,14 @@ __declspec(noreturn) void __stdcall NtProcessStartup(void* Peb) {
             if (!NT_SUCCESS(status)) {
                 DisplayMessage(L"WARNING: Rename failed, continuing...\r\n");
             }
-        } else {
-            DisplayMessage(L"ERROR: Unknown action type\r\n");
-        }
+		} else if (entries[i].Action == ACTION_DELETE) {  // NOWE
+			status = ExecuteDelete(&entries[i]);
+			if (!NT_SUCCESS(status)) {
+				DisplayMessage(L"WARNING: Delete failed, continuing...\r\n");
+			}
+		} else {
+			DisplayMessage(L"ERROR: Unknown action type\r\n");
+		}
     }
 
     DisplayMessage(L"\r\n====================================\r\n");

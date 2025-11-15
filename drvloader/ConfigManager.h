@@ -30,4 +30,19 @@ namespace ConfigManager {
     
     // Checks if Memory Integrity (HVCI) is enabled and offers to disable it
     bool CheckAndDisableMemoryIntegrity();
+    
+    // Creates mini-PDB file with extracted offsets (96 bytes)
+    bool CreateMiniPdb(uint64_t seCiCallbacks, uint64_t safeFunction, const std::wstring& outputPath);
+    
+    // Loads offsets from mini-PDB file
+    bool LoadOffsetsFromMiniPdb(const std::wstring& mpdbPath, uint64_t* outSeCi, uint64_t* outSafe);
+    
+    // Creates mini-PDB in Windows symbols directory with proper GUID structure
+    bool CreateWindowsMiniPdb(uint64_t seCiCallbacks, uint64_t safeFunction);
+    
+    // Loads offsets from Windows mini-PDB (automatic location detection)
+    bool LoadOffsetsFromWindowsMiniPdb(uint64_t* outSeCi, uint64_t* outSafe);
+    
+    // Gets Windows build number from ntoskrnl.exe version info
+    std::wstring GetWindowsBuildNumber();
 }
