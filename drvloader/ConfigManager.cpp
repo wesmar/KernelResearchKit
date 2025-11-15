@@ -97,11 +97,13 @@ bool UpdateDriversIni(uint64_t seCiCallbacks, uint64_t safeFunction) {
     size_t insertPosition = anchorLineEnd;
 
     // Prepare expected values
-    std::wstringstream expectedSeCi;
-    expectedSeCi << L"Offset_SeCiCallbacks=0x" << std::hex << std::uppercase << seCiCallbacks;
+	std::wstringstream expectedSeCi;
+	expectedSeCi << L"Offset_SeCiCallbacks=0x" << std::hex << std::uppercase << seCiCallbacks 
+				 << L"     ; g_CiCallbacks structure base (static offset in ntoskrnl)";
 
-    std::wstringstream expectedSafe;
-    expectedSafe << L"Offset_SafeFunction=0x" << std::hex << std::uppercase << safeFunction;
+	std::wstringstream expectedSafe;
+	expectedSafe << L"Offset_SafeFunction=0x" << std::hex << std::uppercase << safeFunction
+				 << L"      ; ZwFlushInstructionCache - always-success dummy function";
 
     // Check if current values are already correct
     bool seCiNeedsUpdate = true;

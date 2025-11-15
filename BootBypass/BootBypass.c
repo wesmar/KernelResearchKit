@@ -74,17 +74,33 @@ typedef struct _FILE_DIRECTORY_INFORMATION {
 // Remove leading/trailing whitespace from string
 void TrimString(PWSTR str) {
     PWSTR start = str, end;
+    
+    // Remove leading whitespace
     while (*start == L' ' || *start == L'\t' || *start == L'\r' || *start == L'\n')
         start++;
+    
     if (*start == 0) {
         *str = 0;
         return;
     }
+    
+    // Find semicolon (comment start) and truncate there
+    PWSTR semicolon = start;
+    while (*semicolon && *semicolon != L';')
+        semicolon++;
+    
+    if (*semicolon == L';') {
+        *semicolon = 0;  // Truncate at comment
+    }
+    
+    // Remove trailing whitespace
     end = start + wcslen(start) - 1;
     while (end > start && (*end == L' ' || *end == L'\t' || *end == L'\r' || *end == L'\n'))
         end--;
+    
     // Null-terminate trimmed string
     *(end + 1) = 0;
+    
     if (start != str)
         wcscpy(str, start);
 }
