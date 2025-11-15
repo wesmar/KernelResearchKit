@@ -195,7 +195,7 @@ graph TD
 **Mini-PDB Format:**
 ```
 File: C:\Windows\symbols\ntkrnlmp.pdb\{GUID}\ntkrnlmp.mpdb
-Size: 96 bytes
+Size: 32 bytes
 Structure:
   - Magic: "MINIPDB\0" (8 bytes)
   - Version: 1 (4 bytes)
@@ -256,6 +256,68 @@ Step 2: Write high DWORD (addr+4) = 0xFFFFF800
 
 Non-atomic but safe: patching occurs before driver loading attempts.
 ```
+
+---
+
+### Component 4: OmniDriver & OmniUtility (Kernel Payload)
+
+With DSE bypassed via BootBypass or drvloader, the framework can load unsigned kernel drivers. OmniDriver serves as a demonstration payload showcasing production-grade kernel memory operations.
+
+**OmniDriver.sys** - Unsigned kernel driver with safe cross-process memory access.
+
+**Safety Features:**
+- **Process Context Switching**: Uses `KeStackAttachProcess()` for safe address space switching
+- **Structured Exception Handling**: `__try/__except` blocks prevent BSOD from invalid memory access
+- **Memory Probing**: `ProbeForRead`/`ProbeForWrite` validate addresses before operations
+- **Intermediate Buffering**: Never performs direct cross-process copies (allocates non-paged buffer)
+- **Proper Resource Cleanup**: Guaranteed cleanup even during exceptions
+
+**IOCTL Interface:**
+```
+Read:  IOCTL_READWRITE_DRIVER_READ  = 0x80000800 (CTL_CODE custom)
+Write: IOCTL_READWRITE_DRIVER_WRITE = 0x80000804 (CTL_CODE custom)
+
+Request Structure:
+  - ProcessId: Target process ID (DWORD)
+  - Address: Virtual address in target process (ULONG_PTR)
+  - Buffer: Buffer in caller's process (ULONG_PTR)
+  - Size: Transfer size in bytes (SIZE_T, max 16KB)
+  - Write: Direction flag (BOOLEAN: FALSE=read, TRUE=write)
+  - Status: Operation result (NTSTATUS, output)
+```
+
+**OmniUtility.exe** - Demonstration application showcasing kernel capabilities:
+
+**Features:**
+1. **Universal Window Title Modification** - Changes all visible window titles simultaneously
+2. **Direct Text Injection** - Injects text into Notepad buffers (clipboard + kernel write methods)
+3. **Module Base Finder** - Enumerates all loaded modules in any process with base addresses
+4. **Cross-Process Memory Operations** - Read/write arbitrary process memory via kernel driver
+
+**Example Usage:**
+```cmd
+# Load OmniDriver via BootBypass (AutoPatch=YES in drivers.ini)
+# OR manually after DSE bypass:
+sc create OmniDriver binPath= C:\Windows\System32\drivers\OmniDriver.sys type= kernel
+sc start OmniDriver
+
+# Launch demonstration tool
+OmniUtility.exe
+
+Menu:
+[1] Modify all window titles (demonstrates kernel-level window manipulation)
+[2] Inject text into Notepad (demonstrates cross-process write)
+[3] Find module bases (demonstrates process enumeration)
+[0] Exit
+```
+
+**Technical Demonstration Value:**
+
+OmniDriver showcases critical kernel programming concepts:
+- Safe kernel-mode memory operations (no crashes despite invalid user input)
+- Cross-process communication without `ReadProcessMemory`/`WriteProcessMemory` (direct kernel access)
+- Exception-safe resource management in kernel context
+- Proper privilege elevation and security context handling
 
 ---
 
