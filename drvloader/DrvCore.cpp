@@ -817,11 +817,12 @@ bool DrvLoader::LoadDriver(const std::wstring& driverPath, DWORD startType, cons
     CloseServiceHandle(hService);
     CloseServiceHandle(hSCM);
     
-    // STEP 4: Restore DSE using same driver instance
-    std::wcout << L"\n[4/4] Restoring DSE...\n";
-    if (!RestoreDSEInternal()) {
-        std::wcout << L"[-] Warning: Failed to restore DSE (driver loaded but DSE still patched)\n";
-    }
+	// STEP 4: Restore DSE using same driver instance
+	std::wcout << L"\n[4/4] Restoring DSE...\n";
+	if (!RestoreDSEInternal()) {
+		std::wcout << L"[*] INFO: Failed to restore DSE - driver loaded successfully but DSE remains patched\n";
+		std::wcout << L"[*] You can manually restore DSE later using 'drvloader restore'\n";
+	}
     
     // Cleanup RTCore64 once at the end
     Cleanup();
@@ -856,36 +857,43 @@ bool DrvLoader::UnloadDriver(const std::wstring& serviceNameOrPath) {
         return false;
     }
     
-    // Stop service
-    std::wcout << L"[1/2] Stopping service...\n";
-    SERVICE_STATUS serviceStatus;
-    if (ControlService(hService, SERVICE_CONTROL_STOP, &serviceStatus)) {
-        std::wcout << L"[+] Service stopped successfully\n";
-    } else {
-        DWORD err = GetLastError();
-        if (err == ERROR_SERVICE_NOT_ACTIVE) {
-            std::wcout << L"[!] Service was not running\n";
-        } else {
-            std::wcout << L"[-] Failed to stop service (error: " << err << L")\n";
-        }
-    }
+	// Stop service
+	std::wcout << L"[1/2] Stopping service...\n";
+	SERVICE_STATUS serviceStatus;
+	if (ControlService(hService, SERVICE_CONTROL_STOP, &serviceStatus)) {
+		std::wcout << L"[+] Service stopped successfully\n";
+	} else {
+		DWORD err = GetLastError();
+		if (err == ERROR_SERVICE_NOT_ACTIVE) {
+			std::wcout << L"[*] Service was not running\n";
+		} else if (err == 1052) { // ERROR_INVALID_SERVICE_CONTROL
+			std::wcout << L"[*] Service cannot be stopped (KMDF driver - will unload on reboot)\n";
+		} else {
+			std::wcout << L"[*] Could not stop service (error: " << err << L") - continuing with deletion\n";
+		}
+	}
     
-    // Delete service
-    std::wcout << L"[2/2] Deleting service...\n";
-    if (DeleteService(hService)) {
-        std::wcout << L"[+] Service deleted successfully\n";
-    } else {
-        DWORD err = GetLastError();
-        std::wcout << L"[-] Failed to delete service (error: " << err << L")\n";
-        CloseServiceHandle(hService);
-        CloseServiceHandle(hSCM);
-        return false;
-    }
-    
-    CloseServiceHandle(hService);
-    CloseServiceHandle(hSCM);
-    
-    std::wcout << L"\n[SUCCESS] Driver unloaded and service removed\n";
-    
-    return true;
+	// Delete service
+	std::wcout << L"[2/2] Deleting service...\n";
+	if (DeleteService(hService)) {
+		std::wcout << L"[+] Service deleted successfully\n";
+	} else {
+		DWORD err = GetLastError();
+		if (err == 1072) { // ERROR_SERVICE_MARKED_FOR_DELETE
+			std::wcout << L"[*] Service already marked for deletion (will be removed after reboot)\n";
+		} else {
+			std::wcout << L"[-] Failed to delete service (error: " << err << L")\n";
+			CloseServiceHandle(hService);
+			CloseServiceHandle(hSCM);
+			return false;
+		}
+	}
+
+	CloseServiceHandle(hService);
+	CloseServiceHandle(hSCM);
+
+	std::wcout << L"\n[SUCCESS] Driver unloaded and service removed\n";
+	std::wcout << L"[*] Note: KMDF drivers may require system reboot to fully unload\n";
+
+	return true;
 }
