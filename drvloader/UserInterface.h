@@ -14,6 +14,19 @@ namespace UI {
     // Displays offset information for external tools (e.g., BootBypass)
     void DisplayOffsetInfo(DrvLoader& loader);
     
+    // Displays load driver submenu with history
+	void DisplayLoadDriverMenu(DrvLoader& loader, bool fromCLI = false);
+
+    
+    // Displays driver load history
+    void DisplayDriverHistory();
+    
+    // Prompts user for driver path
+    std::wstring PromptForDriverPath();
+    
+    // Prompts user for StartType (0-4)
+    DWORD PromptForStartType();
+    
     // Displays main menu based on current patch state
     void DisplayMenu(bool isPatched);
     

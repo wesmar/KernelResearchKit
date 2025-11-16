@@ -65,6 +65,13 @@ public:
     // Restores original CiValidateImageHeader callback
     bool RestoreDSE();
     
+    // Loads unsigned driver with automatic DSE patch/unpatch
+    bool LoadDriver(const std::wstring& driverPath, DWORD startType = SERVICE_DEMAND_START,
+                   const std::wstring& dependencies = L"");
+    
+    // Unloads driver and removes service (stops and deletes like RTCore64)
+    bool UnloadDriver(const std::wstring& serviceNameOrPath);
+    
 private:
     // Locates ntoskrnl.exe base address in kernel memory
     std::optional<uint64_t> GetNtoskrnlBase();
@@ -83,4 +90,10 @@ private:
     
     // Try to load offsets from existing mini-PDB first (avoid symbol download)
     bool TryLoadOffsetsFromCache(uint64_t* seCiCallbacks, uint64_t* safeFunction);
+    
+    // Internal DSE bypass that assumes RTCore64 is already running
+    bool BypassDSEInternal();
+    
+    // Internal DSE restore that assumes RTCore64 is already running
+    bool RestoreDSEInternal();
 };

@@ -617,6 +617,200 @@ bool LoadOffsetsFromWindowsMiniPdb(uint64_t* outSeCi, uint64_t* outSafe) {
 	std::wcout << L"    SeCiCallbacks: 0x" << std::hex << *outSeCi << std::dec << L"\n";
 	std::wcout << L"    SafeFunction: 0x" << std::hex << *outSafe << std::dec << L"\n";
 
-return true;
+	return true;
 }
+
+// ============================================================================
+// DRIVER LOAD HISTORY MANAGEMENT
+// ============================================================================
+
+bool SaveDriverLoadHistory(const std::wstring& driverPath, const std::wstring& serviceName,
+                           DWORD startType, bool success) {
+    HKEY hKey;
+    
+    SYSTEMTIME st;
+    GetLocalTime(&st);
+    wchar_t timestampRaw[32];
+    swprintf_s(timestampRaw, L"%04d%02d%02d_%02d%02d%02d",
+        st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond);
+    
+    std::wstring historyPath = L"Software\\drvloader\\LoadedDrivers\\History\\";
+    historyPath += timestampRaw;
+    
+    LSTATUS result = RegCreateKeyExW(HKEY_CURRENT_USER, historyPath.c_str(), 0, nullptr,
+        REG_OPTION_NON_VOLATILE, KEY_WRITE, nullptr, &hKey, nullptr);
+    
+    if (result != ERROR_SUCCESS) {
+        std::wcout << L"[-] Failed to create driver history registry key (error: " << result << L")\n";
+        return false;
+    }
+    
+    wchar_t timestampStr[64];
+    swprintf_s(timestampStr, L"%04d-%02d-%02d %02d:%02d:%02d",
+        st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond);
+    
+    RegSetValueExW(hKey, L"Timestamp", 0, REG_SZ, (BYTE*)timestampStr,
+        (DWORD)((wcslen(timestampStr) + 1) * sizeof(wchar_t)));
+    
+    RegSetValueExW(hKey, L"DriverPath", 0, REG_SZ, (BYTE*)driverPath.c_str(),
+        (DWORD)((driverPath.length() + 1) * sizeof(wchar_t)));
+    
+    RegSetValueExW(hKey, L"ServiceName", 0, REG_SZ, (BYTE*)serviceName.c_str(),
+        (DWORD)((serviceName.length() + 1) * sizeof(wchar_t)));
+    
+    RegSetValueExW(hKey, L"StartType", 0, REG_DWORD, (BYTE*)&startType, sizeof(DWORD));
+    
+    DWORD successFlag = success ? 1 : 0;
+    RegSetValueExW(hKey, L"LoadResult", 0, REG_DWORD, (BYTE*)&successFlag, sizeof(DWORD));
+    
+    RegCloseKey(hKey);
+    
+    std::wcout << L"[+] Saved driver load to history: " << serviceName << L"\n";
+    
+    // Keep only the last 8 history entries
+    HKEY hHistoryKey;
+    if (RegOpenKeyExW(HKEY_CURRENT_USER, L"Software\\drvloader\\LoadedDrivers\\History", 0,
+        KEY_READ | KEY_WRITE, &hHistoryKey) == ERROR_SUCCESS) {
+        
+        std::vector<std::wstring> entries;
+        wchar_t subKeyName[256];
+        DWORD index = 0;
+        
+        while (RegEnumKeyW(hHistoryKey, index++, subKeyName, 256) == ERROR_SUCCESS) {
+            entries.push_back(subKeyName);
+        }
+        
+        if (entries.size() > 8) {
+            std::sort(entries.begin(), entries.end());
+            for (size_t i = 0; i < entries.size() - 8; i++) {
+                RegDeleteTreeW(hHistoryKey, entries[i].c_str());
+            }
+        }
+        
+        RegCloseKey(hHistoryKey);
+    }
+    
+    return true;
+}
+
+std::vector<DriverHistoryEntry> GetDriverLoadHistory() {
+    std::vector<DriverHistoryEntry> history;
+    
+    HKEY hHistoryKey;
+    if (RegOpenKeyExW(HKEY_CURRENT_USER, L"Software\\drvloader\\LoadedDrivers\\History", 0,
+        KEY_READ, &hHistoryKey) != ERROR_SUCCESS) {
+        return history;
+    }
+    
+    wchar_t subKeyName[256];
+    DWORD index = 0;
+    
+    while (RegEnumKeyW(hHistoryKey, index++, subKeyName, 256) == ERROR_SUCCESS) {
+        HKEY hEntryKey;
+        std::wstring entryPath = L"Software\\drvloader\\LoadedDrivers\\History\\";
+        entryPath += subKeyName;
+        
+        if (RegOpenKeyExW(HKEY_CURRENT_USER, entryPath.c_str(), 0, KEY_READ, &hEntryKey) == ERROR_SUCCESS) {
+            DriverHistoryEntry entry;
+            entry.timestampRaw = subKeyName;
+            
+            wchar_t buffer[MAX_PATH];
+            DWORD bufferSize = sizeof(buffer);
+            
+            if (RegQueryValueExW(hEntryKey, L"Timestamp", nullptr, nullptr, (BYTE*)buffer, &bufferSize) == ERROR_SUCCESS) {
+                entry.timestamp = buffer;
+            }
+            
+            bufferSize = sizeof(buffer);
+            if (RegQueryValueExW(hEntryKey, L"DriverPath", nullptr, nullptr, (BYTE*)buffer, &bufferSize) == ERROR_SUCCESS) {
+                entry.driverPath = buffer;
+            }
+            
+            bufferSize = sizeof(buffer);
+            if (RegQueryValueExW(hEntryKey, L"ServiceName", nullptr, nullptr, (BYTE*)buffer, &bufferSize) == ERROR_SUCCESS) {
+                entry.serviceName = buffer;
+            }
+            
+            DWORD startType = 0;
+            bufferSize = sizeof(DWORD);
+            if (RegQueryValueExW(hEntryKey, L"StartType", nullptr, nullptr, (BYTE*)&startType, &bufferSize) == ERROR_SUCCESS) {
+                entry.startType = startType;
+            }
+            
+            DWORD successFlag = 0;
+            bufferSize = sizeof(DWORD);
+            if (RegQueryValueExW(hEntryKey, L"LoadResult", nullptr, nullptr, (BYTE*)&successFlag, &bufferSize) == ERROR_SUCCESS) {
+                entry.success = (successFlag == 1);
+            }
+            
+            history.push_back(entry);
+            RegCloseKey(hEntryKey);
+        }
+    }
+    
+    RegCloseKey(hHistoryKey);
+    
+    // Sort by timestamp (newest first)
+    std::sort(history.begin(), history.end(),
+        [](const DriverHistoryEntry& a, const DriverHistoryEntry& b) {
+            return a.timestampRaw > b.timestampRaw;
+        });
+    
+    return history;
+}
+
+bool ClearDriverLoadHistory() {
+    LSTATUS result = RegDeleteTreeW(HKEY_CURRENT_USER, L"Software\\drvloader\\LoadedDrivers\\History");
+    
+    if (result == ERROR_SUCCESS || result == ERROR_FILE_NOT_FOUND) {
+        std::wcout << L"[+] Driver load history cleared\n";
+        return true;
+    }
+    
+    std::wcout << L"[-] Failed to clear driver load history (error: " << result << L")\n";
+    return false;
+}
+
+std::wstring ExtractServiceName(const std::wstring& driverPath) {
+    size_t lastSlash = driverPath.find_last_of(L"\\/");
+    std::wstring filename = (lastSlash != std::wstring::npos) 
+        ? driverPath.substr(lastSlash + 1) 
+        : driverPath;
+    
+    // Remove .sys extension if present
+    if (filename.length() >= 4) {
+        std::wstring ext = filename.substr(filename.length() - 4);
+        std::transform(ext.begin(), ext.end(), ext.begin(), ::towlower);
+        if (ext == L".sys") {
+            filename = filename.substr(0, filename.length() - 4);
+        }
+    }
+    
+    return filename;
+}
+
+std::wstring NormalizeDriverPath(const std::wstring& input) {
+    // If contains \ or : → treat as full path
+    if (input.find(L'\\') != std::wstring::npos || input.find(L':') != std::wstring::npos) {
+        // Ensure .sys extension
+        std::wstring path = input;
+        if (path.length() < 4 || path.substr(path.length() - 4) != L".sys") {
+            path += L".sys";
+        }
+        return path;
+    }
+    
+    // Otherwise → System32\drivers
+    std::wstring filename = input;
+    
+    // Add .sys if missing
+    if (filename.length() < 4 || filename.substr(filename.length() - 4) != L".sys") {
+        filename += L".sys";
+    }
+    
+    WCHAR sysDir[MAX_PATH];
+    GetSystemDirectoryW(sysDir, MAX_PATH);
+    return std::wstring(sysDir) + L"\\drivers\\" + filename;
+}
+
 } // namespace ConfigManager
