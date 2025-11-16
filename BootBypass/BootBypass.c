@@ -93,7 +93,7 @@ void TrimString(PWSTR str) {
         *semicolon = 0;  // Truncate at comment
     }
     
-    // Remove trailing whitespace
+    // NOW remove trailing whitespace (AFTER removing comment)
     end = start + wcslen(start) - 1;
     while (end > start && (*end == L' ' || *end == L'\t' || *end == L'\r' || *end == L'\n'))
         end--;
