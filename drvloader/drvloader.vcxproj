@@ -6,7 +6,6 @@
       <Platform>x64</Platform>
     </ProjectConfiguration>
   </ItemGroup>
-
   <PropertyGroup Label="Globals">
     <VCProjectVersion>17.0</VCProjectVersion>
     <Keyword>Win32Proj</Keyword>
@@ -14,42 +13,31 @@
     <RootNamespace>drvloader</RootNamespace>
     <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
   </PropertyGroup>
-
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
-
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
     <ConfigurationType>Application</ConfigurationType>
     <UseDebugLibraries>false</UseDebugLibraries>
-    <PlatformToolset>v143</PlatformToolset>
+    <PlatformToolset>v145</PlatformToolset>
     <WholeProgramOptimization>false</WholeProgramOptimization>
     <CharacterSet>Unicode</CharacterSet>
     <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
   </PropertyGroup>
-
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
-
   <ImportGroup Label="ExtensionSettings" />
   <ImportGroup Label="Shared" />
-
   <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
-    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" 
-            Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" 
-            Label="LocalAppDataPlatform" />
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
   </ImportGroup>
-
   <PropertyGroup Label="UserMacros" />
-
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <LinkIncremental>false</LinkIncremental>
     <OutDir>$(SolutionDir)bin\x64\Release\</OutDir>
     <IntDir>$(SolutionDir)obj\$(ProjectName)\$(Configuration)\$(Platform)\</IntDir>
     <TargetName>drvloader</TargetName>
   </PropertyGroup>
-
   <PropertyGroup>
     <SOURCE_DATE_EPOCH>1756665900</SOURCE_DATE_EPOCH>
   </PropertyGroup>
-
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <ClCompile>
       <WarningLevel>Level3</WarningLevel>
@@ -100,16 +88,14 @@
       <Culture>0x0409</Culture>
     </ResourceCompile>
   </ItemDefinitionGroup>
-
   <ItemGroup>
     <ClCompile Include="DrvLoader.cpp" />
     <ClCompile Include="ConfigManager.cpp" />
-	<ClCompile Include="ResourceInstaller.cpp" />
+    <ClCompile Include="ResourceInstaller.cpp" />
     <ClCompile Include="DrvCore.cpp" />
     <ClCompile Include="SymbolDownloader.cpp" />
     <ClCompile Include="UserInterface.cpp" />
   </ItemGroup>
-
   <ItemGroup>
     <ClInclude Include="resource.h" />
     <ClInclude Include="ConfigManager.h" />
@@ -118,15 +104,12 @@
     <ClInclude Include="SymbolDownloader.h" />
     <ClInclude Include="UserInterface.h" />
   </ItemGroup>
-
   <ItemGroup>
     <ResourceCompile Include="drvloader.rc" />
   </ItemGroup>
-
   <ItemGroup>
     <Image Include="ICON\kvc.ico" />
   </ItemGroup>
-
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets" />
 </Project>

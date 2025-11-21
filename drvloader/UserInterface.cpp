@@ -35,29 +35,33 @@ void WaitForAnyKey(const std::wstring& message) {
     std::wcout << L"\n";
 }
 
-void DisplayOffsetInfo(DrvLoader& loader) {
+// ============================================================================
+// OFFSET INFO & SAVING
+// ============================================================================
+
+void DisplayOffsetInfo(DrvLoader& loader, bool waitForKey) {
     std::wcout << L"\n";
     std::wcout << L"=========================================================\n";
     std::wcout << L"          OFFSET INFORMATION FOR EXTERNAL TOOLS\n";
     std::wcout << L"=========================================================\n";
     std::wcout << L"\n";
     
-    // Get offsets without driver installation (uses cache or downloads PDB)
+    // 1. Get symbol offsets
     uint64_t seCiCallbacks, safeFunction;
     if (!loader.GetSymbolOffsets(&seCiCallbacks, &safeFunction)) {
         std::wcout << L"[-] Failed to get symbol offsets\n";
-        WaitForAnyKey(L"\nPress any key to return to menu...");
+        if (waitForKey) WaitForAnyKey(L"\nPress any key to return to menu...");
         return;
     }
     
-    // Load the offsets to display them
+    // 2. Load cached offsets to verify correct paths (optional verification step)
     uint64_t seCiCallbacksOffset, safeFunctionOffset;
     if (!ConfigManager::LoadOffsetsFromWindowsMiniPdb(&seCiCallbacksOffset, &safeFunctionOffset)) {
-        std::wcout << L"[-] Failed to load offsets\n";
-        WaitForAnyKey(L"\nPress any key to return to menu...");
-        return;
+        seCiCallbacksOffset = seCiCallbacks;
+        safeFunctionOffset = safeFunction;
     }
     
+    // 3. Display in legacy INI style
     std::wcout << L"[Config] section in drivers.ini:\n";
     std::wcout << L"....................................\n";
     
@@ -67,41 +71,17 @@ void DisplayOffsetInfo(DrvLoader& loader) {
     
     std::wcout << L"....................................\n\n";
     
-    // Save to drivers.ini and registry
+    // 4. Save to files and registry
     bool driversIniUpdated = ConfigManager::UpdateDriversIni(seCiCallbacksOffset, safeFunctionOffset);
     
-    WCHAR systemRoot[MAX_PATH];
-    GetSystemDirectoryW(systemRoot, MAX_PATH);
-    std::wstring ntoskrnlPath = std::wstring(systemRoot) + L"\\ntoskrnl.exe";
-    
-    DWORD verHandle = 0;
-    DWORD verSize = GetFileVersionInfoSizeW(ntoskrnlPath.c_str(), &verHandle);
-    std::wstring buildInfo = L"Unknown";
-    
-    if (verSize > 0) {
-        std::vector<BYTE> verData(verSize);
-        if (GetFileVersionInfoW(ntoskrnlPath.c_str(), 0, verSize, verData.data())) {
-            VS_FIXEDFILEINFO* pFileInfo = nullptr;
-            UINT len = 0;
-            if (VerQueryValueW(verData.data(), L"\\", (LPVOID*)&pFileInfo, &len)) {
-                wchar_t ver[64];
-                swprintf_s(ver, L"%d.%d.%d.%d",
-                    HIWORD(pFileInfo->dwFileVersionMS),
-                    LOWORD(pFileInfo->dwFileVersionMS),
-                    HIWORD(pFileInfo->dwFileVersionLS),
-                    LOWORD(pFileInfo->dwFileVersionLS));
-                buildInfo = ver;
-            }
-        }
-    }
-    
+    std::wstring buildInfo = ConfigManager::GetWindowsBuildNumber();
     bool registrySaved = ConfigManager::SaveOffsetsToRegistry(seCiCallbacksOffset, safeFunctionOffset, buildInfo);
     
     std::wcout << L"\n[*] Save status:\n";
     if (driversIniUpdated) {
         std::wcout << L"    [+] Saved to C:\\Windows\\drivers.ini\n";
     } else {
-        std::wcout << L"    [-] drivers.ini not found\n";
+        std::wcout << L"    [-] drivers.ini not found (create it manually or check permissions)\n";
     }
     
     if (registrySaved) {
@@ -115,8 +95,15 @@ void DisplayOffsetInfo(DrvLoader& loader) {
     std::wcout << L"Note: These offsets are specific to your current ntoskrnl.exe build.\n";
     std::wcout << L"After Windows updates, regenerate these values.\n";
     
-    WaitForAnyKey(L"\nPress any key to return to menu...");
+    // Control flow: pause only if requested (Interactive vs CLI)
+    if (waitForKey) {
+        WaitForAnyKey(L"\nPress any key to return to menu...");
+    }
 }
+
+// ============================================================================
+// MAIN MENU
+// ============================================================================
 
 void DisplayMenu(bool isPatched) {
     std::wcout << L"\n";
@@ -138,7 +125,7 @@ void DisplayMenu(bool isPatched) {
 }
 
 // ============================================================================
-// DRIVER HISTORY DISPLAY
+// HISTORY DISPLAY
 // ============================================================================
 
 void DisplayDriverHistory() {
@@ -146,7 +133,6 @@ void DisplayDriverHistory() {
     std::wcout << L"=========================================================\n";
     std::wcout << L"                   DRIVER LOAD HISTORY\n";
     std::wcout << L"=========================================================\n";
-    std::wcout << L"\n";
     
     auto history = ConfigManager::GetDriverLoadHistory();
     
@@ -156,53 +142,29 @@ void DisplayDriverHistory() {
         return;
     }
     
-    // StartType lookup table
-    const wchar_t* startTypeNames[] = {
-        L"BOOT", L"SYSTEM", L"AUTO", L"DEMAND", L"DISABLED"
-    };
-    
     for (size_t i = 0; i < history.size(); i++) {
         const auto& entry = history[i];
-        
         std::wcout << L"[" << (i + 1) << L"] " << entry.serviceName << L"\n";
         std::wcout << L"    Path: " << entry.driverPath << L"\n";
         std::wcout << L"    Time: " << entry.timestamp << L"\n";
-        std::wcout << L"    StartType: " << entry.startType << L" (";
-        
-        if (entry.startType <= 4) {
-            std::wcout << startTypeNames[entry.startType];
-        } else {
-            std::wcout << L"UNKNOWN";
-        }
-        
-        std::wcout << L")\n";
-        std::wcout << L"    Result: " << (entry.success ? L"SUCCESS" : L"FAILED") << L"\n";
-        std::wcout << L"\n";
+        std::wcout << L"    Result: " << (entry.success ? L"SUCCESS" : L"FAILED") << L"\n\n";
     }
     
-    std::wcout << L"Total entries: " << history.size() << L"/8\n";
-    
-    WaitForAnyKey(L"\nPress any key to return...");
+    WaitForAnyKey(L"Press any key to return...");
 }
 
 // ============================================================================
-// USER INPUT PROMPTS
+// INPUT HELPERS
 // ============================================================================
 
 std::wstring PromptForDriverPath() {
     std::wcout << L"\n";
-    std::wcout << L"Enter driver path:\n";
-    std::wcout << L"  Examples:\n";
-    std::wcout << L"    kvckbd           -> C:\\Windows\\System32\\drivers\\kvckbd.sys\n";
-    std::wcout << L"    kvckbd.sys       -> C:\\Windows\\System32\\drivers\\kvckbd.sys\n";
-    std::wcout << L"    C:\\test.sys      -> C:\\test.sys\n";
-    std::wcout << L"\n";
+    std::wcout << L"Enter driver path (e.g., 'kvckbd' or 'C:\\test.sys'):\n";
     std::wcout << L"Path: ";
     
     std::wstring input;
     std::getline(std::wcin, input);
     
-    // Trim whitespace
     input.erase(0, input.find_first_not_of(L" \t"));
     input.erase(input.find_last_not_of(L" \t") + 1);
     
@@ -210,196 +172,129 @@ std::wstring PromptForDriverPath() {
 }
 
 DWORD PromptForStartType() {
-    std::wcout << L"\n";
-    std::wcout << L"Select StartType:\n";
-    std::wcout << L"  [0] BOOT      - Load during boot\n";
-    std::wcout << L"  [1] SYSTEM    - Load by IO Manager\n";
-    std::wcout << L"  [2] AUTO      - Load by Service Control Manager\n";
-    std::wcout << L"  [3] DEMAND    - Manual start (default, recommended)\n";
-    std::wcout << L"  [4] DISABLED  - Driver disabled\n";
-    std::wcout << L"\n";
-    std::wcout << L"Choice [0-4, default 3]: ";
+    std::wcout << L"\nSelect StartType:\n";
+    std::wcout << L"  [0] BOOT\n";
+    std::wcout << L"  [1] SYSTEM\n";
+    std::wcout << L"  [2] AUTO\n";
+    std::wcout << L"  [3] DEMAND (default)\n";
+    std::wcout << L"Choice [0-4]: ";
     
     std::wstring input;
     std::getline(std::wcin, input);
     
-    // Default to DEMAND (3) if empty or invalid
-    if (input.empty()) {
-        return SERVICE_DEMAND_START;
-    }
+    if (input.empty()) return SERVICE_DEMAND_START;
     
     int choice = _wtoi(input.c_str());
-    if (choice < 0 || choice > 4) {
-        std::wcout << L"[!] Invalid choice, using default (3 - DEMAND)\n";
-        return SERVICE_DEMAND_START;
-    }
+    if (choice < 0 || choice > 4) return SERVICE_DEMAND_START;
     
     return static_cast<DWORD>(choice);
 }
 
 // ============================================================================
-// LOAD DRIVER SUBMENU
+// DRIVER OPERATIONS SUBMENU
 // ============================================================================
 
 void DisplayLoadDriverMenu(DrvLoader& loader, bool fromCLI) {
     while (true) {
         std::wcout << L"\n";
         std::wcout << L"=========================================================\n";
-        std::wcout << L"                  LOAD UNSIGNED DRIVER\n";
+        std::wcout << L"                  LOAD / MANAGE DRIVER\n";
         std::wcout << L"=========================================================\n";
         std::wcout << L"\n";
         
         // Display recent history
         auto history = ConfigManager::GetDriverLoadHistory();
-        
         if (!history.empty()) {
-            std::wcout << L"Recent drivers (last " << history.size() << L"):\n";
-            std::wcout << L"---------------------------------------------------------\n";
-            
-            for (size_t i = 0; i < history.size() && i < 8; i++) {
-                const auto& entry = history[i];
-                
-                std::wcout << L"[" << (i + 1) << L"] " << entry.serviceName;
-                std::wcout << L" (" << entry.timestamp << L")";
-                std::wcout << L" [" << (entry.success ? L"SUCCESS" : L"FAILED") << L"]\n";
+            std::wcout << L"Recent drivers:\n";
+            for (size_t i = 0; i < history.size() && i < 5; i++) {
+                std::wcout << L"[" << (i + 1) << L"] " << history[i].serviceName << L" (" 
+                           << (history[i].success ? L"OK" : L"FAIL") << L")\n";
             }
-            
-            std::wcout << L"\n";
-        }
-        
-        std::wcout << L"Options:\n";
-        std::wcout << L"---------------------------------------------------------\n";
-        
-        if (!history.empty()) {
-            std::wcout << L"[1-" << history.size() << L"] Load driver from history\n";
+            std::wcout << L"---------------------------------------------------------\n";
         }
         
         std::wcout << L"[L] Load new driver\n";
-        std::wcout << L"[U] Unload driver (stop and remove service)\n";
+        std::wcout << L"[R] Reload driver (Stop -> Patch -> Start -> Restore)\n";
+        std::wcout << L"[S] Stop driver (Stop service only)\n";
+        std::wcout << L"[U] Remove driver (Stop service and delete)\n";
         std::wcout << L"[H] Show full history\n";
         std::wcout << L"[C] Clear history\n";
         
-        // Only show "Return to main menu" if not launched from CLI
         if (!fromCLI) {
-            std::wcout << L"[R] Return to main menu\n";
+            std::wcout << L"[B] Return to main menu\n";
         }
         
-        std::wcout << L"[X] Exit program\n";
         std::wcout << L"=========================================================\n";
         std::wcout << L"\nSelect option: ";
         
         std::wstring input;
         std::getline(std::wcin, input);
         
-        // Trim whitespace
         input.erase(0, input.find_first_not_of(L" \t"));
         input.erase(input.find_last_not_of(L" \t") + 1);
         
-        if (input.empty()) {
-            continue;
-        }
+        if (input.empty()) continue;
         
-        // Convert to uppercase for command comparison
         std::wstring cmd = input;
         std::transform(cmd.begin(), cmd.end(), cmd.begin(), ::towupper);
         
-		// Handle commands
-		if (cmd == L"R" && !fromCLI) {
-			return;
-		}
-		else if (cmd == L"X") {
-			std::wcout << L"\nExiting...\n";
-			exit(0);
-		}
-		else if (cmd == L"H") {
-			DisplayDriverHistory();
-		}
-		else if (cmd == L"C") {
-			std::wcout << L"\n[!] Are you sure you want to clear all history? (Y/N): ";
-			wchar_t confirm;
-			std::wcin >> confirm;
-			ClearInputBuffer();
-			
-			if (confirm == L'Y' || confirm == L'y') {
-				ConfigManager::ClearDriverLoadHistory();
-				std::wcout << L"[+] History cleared\n";
-			}
-			
-			WaitForAnyKey(L"\nPress any key to continue...");
-		}
-		else if (cmd == L"L") {
-            // Load new driver
-            std::wstring driverPath = PromptForDriverPath();
-            
-            if (driverPath.empty()) {
-                std::wcout << L"[-] No driver path specified\n";
-                WaitForAnyKey(L"\nPress any key to continue...");
-                continue;
+        // Handle Commands
+        if (cmd == L"B" && !fromCLI) {
+            return;
+        }
+        else if (cmd == L"H") {
+            DisplayDriverHistory();
+        }
+        else if (cmd == L"C") {
+            ConfigManager::ClearDriverLoadHistory();
+            std::wcout << L"[+] History cleared\n";
+        }
+        else if (cmd == L"L") {
+            std::wstring path = PromptForDriverPath();
+            if (!path.empty()) {
+                DWORD type = PromptForStartType();
+                bool success = loader.LoadDriver(path, type);
+                std::wcout << (success ? L"\n[SUCCESS] Driver loaded!\n" : L"\n[FAILED] Operation failed\n");
+                WaitForAnyKey(L"Press any key...");
             }
-            
-            DWORD startType = PromptForStartType();
-            
-            std::wcout << L"\n";
-            bool success = loader.LoadDriver(driverPath, startType);
-            
-            if (success) {
-                std::wcout << L"\n[SUCCESS] Driver loaded successfully!\n";
-            } else {
-                std::wcout << L"\n[FAILED] Driver load unsuccessful\n";
+        }
+        else if (cmd == L"R") {
+            std::wstring path = PromptForDriverPath();
+            if (!path.empty()) {
+                bool success = loader.ReloadDriver(path);
+                std::wcout << (success ? L"\n[SUCCESS] Driver reloaded!\n" : L"\n[FAILED] Operation failed\n");
+                WaitForAnyKey(L"Press any key...");
             }
-            
-            WaitForAnyKey(L"\nPress any key to continue...");
+        }
+        else if (cmd == L"S") {
+            std::wcout << L"\nEnter service name to stop: ";
+            std::wstring name;
+            std::getline(std::wcin, name);
+            if (!name.empty()) {
+                bool success = loader.StopDriver(name);
+                std::wcout << (success ? L"\n[SUCCESS] Driver stopped!\n" : L"\n[FAILED] Operation failed\n");
+                WaitForAnyKey(L"Press any key...");
+            }
         }
         else if (cmd == L"U") {
-            // Unload driver
-            std::wcout << L"\nEnter service name to unload: ";
-            std::wstring serviceName;
-            std::getline(std::wcin, serviceName);
-            
-            if (serviceName.empty()) {
-                std::wcout << L"[-] No service name specified\n";
-                WaitForAnyKey(L"\nPress any key to continue...");
-                continue;
+            std::wcout << L"\nEnter service name to remove: ";
+            std::wstring name;
+            std::getline(std::wcin, name);
+            if (!name.empty()) {
+                bool success = loader.RemoveDriver(name);
+                std::wcout << (success ? L"\n[SUCCESS] Driver removed!\n" : L"\n[FAILED] Operation failed\n");
+                WaitForAnyKey(L"Press any key...");
             }
-            
-            std::wcout << L"\n";
-            bool success = loader.UnloadDriver(serviceName);
-            
-            if (success) {
-                std::wcout << L"\n[SUCCESS] Driver unloaded successfully!\n";
-            } else {
-                std::wcout << L"\n[FAILED] Driver unload unsuccessful\n";
-            }
-            
-            WaitForAnyKey(L"\nPress any key to continue...");
         }
         else {
-            // Try to parse as number (history selection)
+            // Try loading from history by number
             int choice = _wtoi(input.c_str());
-            
             if (choice > 0 && choice <= static_cast<int>(history.size())) {
-                // Load from history
                 const auto& entry = history[choice - 1];
-                
-                std::wcout << L"\n[*] Loading from history:\n";
-                std::wcout << L"    Driver: " << entry.serviceName << L"\n";
-                std::wcout << L"    Path: " << entry.driverPath << L"\n";
-                std::wcout << L"    StartType: " << entry.startType << L"\n";
-                std::wcout << L"\n";
-                
+                std::wcout << L"\n[*] Loading from history: " << entry.serviceName << L"\n";
                 bool success = loader.LoadDriver(entry.driverPath, entry.startType);
-                
-                if (success) {
-                    std::wcout << L"\n[SUCCESS] Driver loaded successfully!\n";
-                } else {
-                    std::wcout << L"\n[FAILED] Driver load unsuccessful\n";
-                }
-                
-                WaitForAnyKey(L"\nPress any key to continue...");
-            }
-            else {
-                std::wcout << L"\n[ERROR] Invalid option selected.\n";
-                WaitForAnyKey(L"\nPress any key to continue...");
+                std::wcout << (success ? L"\n[SUCCESS] Driver loaded!\n" : L"\n[FAILED] Operation failed\n");
+                WaitForAnyKey(L"Press any key...");
             }
         }
     }

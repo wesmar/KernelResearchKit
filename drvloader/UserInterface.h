@@ -2,37 +2,37 @@
 
 #include <Windows.h>
 #include <string>
+#include "DrvCore.h"
 
-// Forward declaration to avoid circular dependency
-class DrvLoader;
-
-// User interface and console interaction functions
 namespace UI {
-    // Displays application banner with author information
-    void DisplayBanner();
-    
-    // Displays offset information for external tools (e.g., BootBypass)
-    void DisplayOffsetInfo(DrvLoader& loader);
-    
-    // Displays load driver submenu with history
-	void DisplayLoadDriverMenu(DrvLoader& loader, bool fromCLI = false);
 
-    
-    // Displays driver load history
-    void DisplayDriverHistory();
-    
-    // Prompts user for driver path
-    std::wstring PromptForDriverPath();
-    
-    // Prompts user for StartType (0-4)
-    DWORD PromptForStartType();
-    
-    // Displays main menu based on current patch state
-    void DisplayMenu(bool isPatched);
-    
-    // Clears input buffer to prevent leftover characters
+    // Displays the application banner with author information
+    void DisplayBanner();
+
+    // Clears the input buffer to prevent skipped prompts
     void ClearInputBuffer();
-    
-    // Waits for user keypress with custom message
-    void WaitForAnyKey(const std::wstring& message = L"\nPress any key to continue...");
+
+    // Pauses execution until the user presses a key
+    void WaitForAnyKey(const std::wstring& message);
+
+    // Calculates, displays, and saves kernel offsets for external tools
+    // waitForKey: If true, pauses after display (interactive mode); if false, returns immediately (CLI mode)
+    void DisplayOffsetInfo(DrvLoader& loader, bool waitForKey = true);
+
+    // Displays the main menu options based on current DSE status
+    void DisplayMenu(bool isPatched);
+
+    // Shows the history of loaded drivers
+    void DisplayDriverHistory();
+
+    // Helper to prompt user for driver file path
+    std::wstring PromptForDriverPath();
+
+    // Helper to prompt user for service start type (default: DEMAND)
+    DWORD PromptForStartType();
+
+    // Displays the submenu for driver operations (Load, Reload, Stop, Remove)
+    // fromCLI: If true, hides the "Return to main menu" option
+    void DisplayLoadDriverMenu(DrvLoader& loader, bool fromCLI = false);
+
 }

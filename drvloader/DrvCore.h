@@ -5,11 +5,9 @@
 #include <optional>
 #include "SymbolDownloader.h"
 
-// RTCore64 IOCTL codes for memory read/write operations
 constexpr DWORD RTC_IOCTL_MEMORY_READ = 0x80002048;
 constexpr DWORD RTC_IOCTL_MEMORY_WRITE = 0x8000204C;
 
-// RTCore64 driver communication structures
 struct alignas(8) RTC_MEMORY_READ {
     BYTE Pad0[8];
     uint64_t Address;
@@ -28,72 +26,49 @@ struct alignas(8) RTC_MEMORY_WRITE {
     BYTE Pad3[16];
 };
 
-// Main driver loader and DSE bypass engine
 class DrvLoader {
 public:
     HANDLE hDriver{ INVALID_HANDLE_VALUE };
     std::optional<uint64_t> originalCallback;
     SymbolDownloader symbolDownloader;
 
-    // Gets symbol offsets from PDB or cache
+    // Resolves necessary kernel symbol offsets
     bool GetSymbolOffsets(uint64_t* seCiCallbacks, uint64_t* safeFunction);
     
-    // Initializes symbol downloader and loads registry state
+    // Initializes the loader and checks registry state
     bool Initialize();
     
-    // Closes driver handle and cleans up resources
+    // Releases resources and handles
     void Cleanup();
     
-    // Writes 32-bit value to kernel memory via RTCore64
+    // Kernel memory operations
     bool WriteMemory32(uint64_t address, uint32_t value);
-    
-    // Writes 64-bit value to kernel memory (two 32-bit writes)
     bool WriteMemory64(uint64_t address, uint64_t value);
-    
-    // Reads 32-bit value from kernel memory via RTCore64
     std::optional<uint32_t> ReadMemory32(uint64_t address);
-    
-    // Reads 64-bit value from kernel memory (two 32-bit reads)
     std::optional<uint64_t> ReadMemory64(uint64_t address);
     
-    // Checks current DSE status and updates offsets
+    // DSE Status and Manipulation
     bool CheckDSEStatus(bool& isPatched);
-    
-    // Patches DSE by replacing CiValidateImageHeader with safe function
     bool BypassDSE();
-    
-    // Restores original CiValidateImageHeader callback
     bool RestoreDSE();
     
-    // Loads unsigned driver with automatic DSE patch/unpatch
-    bool LoadDriver(const std::wstring& driverPath, DWORD startType = SERVICE_DEMAND_START,
-                   const std::wstring& dependencies = L"");
-    
-    // Unloads driver and removes service (stops and deletes like RTCore64)
-    bool UnloadDriver(const std::wstring& serviceNameOrPath);
+    // Driver Management
+    bool LoadDriver(const std::wstring& driverPath, DWORD startType = SERVICE_DEMAND_START, const std::wstring& dependencies = L"");
+    bool ReloadDriver(const std::wstring& driverPath);
+    bool StopDriver(const std::wstring& serviceNameOrPath);   // New: Stops service without deleting
+    bool RemoveDriver(const std::wstring& serviceNameOrPath); // Renamed from UnloadDriver: Stops and deletes
     
 private:
-    // Locates ntoskrnl.exe base address in kernel memory
     std::optional<uint64_t> GetNtoskrnlBase();
-    
-    // Gets symbol offset from ntoskrnl.exe using PDB
     std::optional<uint64_t> GetKernelSymbolOffset(const std::wstring& symbolName);
     
-    // Installs and starts RTCore64 driver service
+    // Internal helpers for RTCore64 handling
     bool InstallAndStartDriver();
-    
-    // Stops and removes RTCore64 driver service
     bool StopAndRemoveDriver();
-    
-    // Verifies RTCore64.sys exists in System32\drivers
     bool CheckDriverFileExists();
     
-    // Try to load offsets from existing mini-PDB first (avoid symbol download)
+    // Internal DSE helpers
     bool TryLoadOffsetsFromCache(uint64_t* seCiCallbacks, uint64_t* safeFunction);
-    
-    // Internal DSE bypass that assumes RTCore64 is already running
     bool BypassDSEInternal();
-    
-    // Internal DSE restore that assumes RTCore64 is already running
     bool RestoreDSEInternal();
 };
